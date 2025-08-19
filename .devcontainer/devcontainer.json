@@ -19,4 +19,13 @@
 
 	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
 	// "remoteUser": "root"
-}
+
+		,
+		"mounts": [
+			"source=${env:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached",
+			"type=bind,source=${env:SSH_AUTH_SOCK},target=/ssh-agent"
+		],
+		"remoteEnv": {
+			"SSH_AUTH_SOCK": "/ssh-agent"
+		}
+	}
