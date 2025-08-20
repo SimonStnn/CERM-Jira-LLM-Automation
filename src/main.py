@@ -5,6 +5,7 @@ from openai import AzureOpenAI
 from requests_toolbelt import user_agent  # type: ignore
 
 from config import log, settings
+from help_selector import select_help_documents
 from prompt import Prompt
 
 __version__ = "0.0.0"
@@ -24,13 +25,31 @@ def main():
         },
     )
 
-    # Get all projects viewable by anonymous users.
-    projects = jira.projects()
+    issue = jira.issue("PLAYG-149")
 
-    # Sort available project keys, then return the second, third, and fourth keys.
-    keys = sorted(project.key for project in projects)[2:5]
+    log.info("Processing issue %s", issue.key)
 
-    log.info(f"Projects: {keys}")
+    log.info(issue.fields.summary + "\n" + (issue.fields.description or ""))
+
+    onlinehelp_comment = None
+    for comment in issue.fields.comment.comments:
+        # Check if "online help" is mentioned in the first two lines
+        if "online help" in "".join(str(comment.body).lower().split("\n", 2)[:2]):
+            onlinehelp_comment = comment
+            break
+    else:
+        log.warning("No online help comment found.")
+        exit(1)
+
+    log.info("Online help comment:\n%s", onlinehelp_comment.body)
+
+    reference_docs = select_help_documents(issue, onlinehelp_comment, max_documents=5)
+
+    log.info("Found %d reference documents.", len(reference_docs))
+    log.info(
+        "Reference documents:\n%s",
+        "\n".join([f"https://onlinehelp.cerm.net/{doc}" for doc in reference_docs]),
+    )
 
     client = AzureOpenAI(
         azure_endpoint=settings.azure.endpoint,
@@ -46,6 +65,11 @@ def main():
     messages = prompt.to_chat_completion_messages()
 
     log.info("Sending chat completion request to Azure OpenAI.")
+
+    log.info("Using model: %s", settings.azure.deployment_name)
+    log.info(messages)
+
+    exit()
 
     # Generate the completion
     completion = client.chat.completions.create(
