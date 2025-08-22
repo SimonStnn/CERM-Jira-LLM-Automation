@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Literal, cast
+from typing import Literal
 
 from openai.types.chat.chat_completion_message_param import ChatCompletionMessageParam
 
@@ -18,11 +18,16 @@ Role = Literal["user", "assistant", "system"]
 
 
 class Prompt:
-    def __init__(self, messages: list[ChatCompletionMessageParam]):
-        self.messages = messages
+    def __init__(self, system: str, user: str, assistant: str):
+        self.system = system
+        self.user = user
+        self.assistant = assistant
 
     def to_chat_completion_messages(self) -> list[ChatCompletionMessageParam]:
-        return self.messages
+        return [
+            {"role": "user", "content": self.user},
+            {"role": "assistant", "content": self.assistant},
+        ]
 
     @classmethod
     def get_system_prompt(
@@ -32,30 +37,6 @@ class Prompt:
             content = f.read()
             return {"role": "system", "content": content}
 
-    @classmethod
-    def from_markdown_files(cls, directory: str = PROMPT_DIR) -> "Prompt":
-        messages: list[ChatCompletionMessageParam] = []
-        for filename in os.listdir(directory):
-            if filename.endswith(".md"):
-                role = (
-                    filename[:-3].lower()
-                    if filename[:-3].lower() in ["system", "user", "assistant"]
-                    else "user"
-                )
-                with open(os.path.join(directory, filename), "r") as f:
-                    content = f.read()
-                    message = {"role": role, "content": content}
-                    messages.append(cast(ChatCompletionMessageParam, message))
-        return cls(messages)
-
 
 if __name__ == "__main__":
-    prompt = Prompt.from_markdown_files()
-    log.info(f"Loaded prompt with {len(prompt.messages)} messages.")
-    for message in prompt.messages:
-        content = message.get("content")
-        if isinstance(content, str):
-            preview = content[:30]
-        else:
-            preview = str(content)[:30] if content is not None else "<no content>"
-        log.info(f" - {message.get('role', 'user')}: {preview}...")
+    pass
