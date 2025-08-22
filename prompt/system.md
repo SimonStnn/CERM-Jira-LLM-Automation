@@ -33,8 +33,6 @@ If unclear, ask:
 - Version-specific?
 - Breaking change?
 
----
-
 ## Output Structure
 
 ### Draft Release Note (concise)

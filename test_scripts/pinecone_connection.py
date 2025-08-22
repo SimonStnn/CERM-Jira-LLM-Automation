@@ -47,8 +47,13 @@ results = cast(
 
 for match in results["matches"]:
     log.info(f"Score: {match['score']:.4f}")
-    log.info(f"Source: {match['metadata'].get('source')}")
-    log.info(f"Text: {match['metadata'].get('text')}\n")
-
+    log.info(f"Values: {match['values']}")
+    log.info(
+        f"Metadata: {match['metadata'].keys()}"
+        + f"\n  Source: {match['metadata'].get('source')}"
+        + f"\n  Source Size: {match['metadata'].get('source_size')}"
+        + f"\n  Title: {match['metadata'].get('title')}"
+        + f"\n  Text: {match['metadata'].get('text').replace('\n', ' ')[:50]}{'...' if len(match['metadata'].get('text')) > 50 else ''}"
+    )
 else:
     log.info(f"Found {len(results['matches'])} matches")
