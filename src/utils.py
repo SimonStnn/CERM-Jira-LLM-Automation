@@ -3,15 +3,18 @@ from __future__ import annotations
 import datetime
 import json
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from config import log
+
+if TYPE_CHECKING:
+    from controller import Reference
 
 
 def build_jira_comment(
     *,
     completion_content: str | None,
-    results: Any,
+    references: list[Reference],
     issues_dir: str,
 ) -> tuple[str, dict[str, Any]]:
     """Build a plain-text Jira comment and an ADF payload for the same content.
@@ -24,23 +27,13 @@ def build_jira_comment(
     seen: set[str] = set()
     refs_list: list[tuple[str, str, str]] = []
     today = datetime.date.today().isoformat()
-    for m in results["matches"]:
-        meta: dict[str, Any] = m.get("metadata")
-        source = meta.get("source")
-        if not source or (source := str(source)) in seen:
+    for ref in references:
+        source = ref.source
+        if source in seen:
             continue
         seen.add(source)
-        name = str(
-            meta.get(
-                "title",
-                (
-                    os.path.basename(source.rstrip("/")).lstrip(".").replace("_", " ")
-                    or source
-                ).rsplit(".", 1)[0],
-            )
-        )
 
-        refs_list.append((name, source, today))
+        refs_list.append((ref.title, source, today))
 
     # Build a plain-text comment compatible with Jira REST API v2
     content_text = completion_content or ""

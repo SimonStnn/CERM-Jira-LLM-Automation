@@ -1,186 +1,67 @@
 from __future__ import annotations
 
-import json
 import os
-import time
-from typing import Any, cast
 
-from jira import JIRA
-from openai import AzureOpenAI
 from openai.types.chat.chat_completion_message_param import ChatCompletionMessageParam
-from pinecone import Pinecone
-from requests_toolbelt import user_agent  # type: ignore
 
 from config import log, settings
-from utils import build_jira_comment
-
-# from prompt import Prompt
-
-__version__ = "0.0.0"
+from const import PROMPTS_DIR, __version__
+from controller import Controller
 
 assert __version__ is not None, "Version must be set"
 
 
 def main():
-    log.info("Application started.")
+    log.info("Application started")
 
-    # * Initialize connections
+    controller = Controller()
 
-    jira = JIRA(
-        settings.jira.server,
-        basic_auth=(settings.jira.email, settings.jira.api_token),
-        options={
-            "headers": {
-                "User-Agent": user_agent(settings.jira.user_agent, __version__)
-            },
-        },
-    )
+    system_prompt = controller.get_system_prompt()
 
-    client = AzureOpenAI(
-        api_key=settings.azure.api_key,
-        api_version=settings.azure.api_version,
-        azure_endpoint=settings.azure.endpoint,
-    )
+    results = controller.find_online_help_issues(projects=["PLAYG", "CERM7", "LRN"])
+    for issue, onlinehelp_comment in results:
+        log.info("Processing issue %s comment %s", issue.key, onlinehelp_comment.id)
+        matches = controller.query_pinecone(onlinehelp_comment.body)
 
-    embedding_client = AzureOpenAI(
-        api_key=settings.azure.api_key,
-        api_version=settings.azure.api_version,
-        azure_endpoint=settings.azure.embedding.endpoint,
-    )
-
-    pc = Pinecone(api_key=settings.pinecone.api_key)
-    index_info = cast(Any, pc.describe_index(name=settings.pinecone.index_name))
-    idx = pc.Index(host=cast(str, index_info.host))
-
-    # * Fetch issue
-
-    issue = jira.issue("PLAYG-149")
-
-    log.info("Processing issue %s", issue.key)
-    # log.info(issue.fields.summary + "\n" + (issue.fields.description or ""))
-
-    onlinehelp_comment = None
-    for comment in issue.fields.comment.comments:
-        # Check if any relevant phrases are mentioned in the first two lines
-        if any(
-            phrase in "".join(str(comment.body).lower().split("\n", 2)[:2])
-            for phrase in ["online help", "doc & test"]
-        ):
-            onlinehelp_comment = comment
-            break
-    else:
-        log.warning("No online help comment found for %s.", issue.key)
-        exit(1)
-
-    # * Query Pinecone
-
-    query_embedding = (
-        embedding_client.embeddings.create(
-            model=settings.azure.embedding.deployment_name,
-            input=onlinehelp_comment.body,
+        user_prompt = controller.build_user_prompt(
+            references=matches, issue=issue, onlinehelp_comment=onlinehelp_comment
         )
-        .data[0]
-        .embedding
-    )
 
-    results = cast(
-        Any,
-        idx.query(
-            vector=query_embedding,
-            top_k=10,
-            namespace=settings.pinecone.namespace,
-            include_metadata=True,
-            # filter={"metadata_key": { "$eq": "value1" }}
-        ),
-    )
+        log.info("Using model: %s", settings.azure.deployment_name)
+        messages: list[ChatCompletionMessageParam] = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
 
-    references = [doc["metadata"]["source"] for doc in results.matches]
-    log.info("Found %d references", len(references))
+        # Write messages to PROMPTS_DIR/issues/issuekey.json
+        issues_dir = os.path.join(PROMPTS_DIR, "issues", issue.key)
+        os.makedirs(issues_dir, exist_ok=True)
+        for message in messages:
+            message_path = os.path.join(issues_dir, f"{message['role']}.md")
+            with open(message_path, "w", encoding="utf-8") as f:
+                f.write(str(message.get("content", "")))
 
-    # * Read the system prompt
+        log.info("Wrote messages to %s", issues_dir)
 
-    PROMPTS_DIR = os.path.abspath(os.path.join("prompt"))
-    SYSTEM_PROMPT_PATH = os.path.join(PROMPTS_DIR, "system.md")
-    log.info("Using system prompt: %s", SYSTEM_PROMPT_PATH)
-    with open(SYSTEM_PROMPT_PATH, "r", encoding="utf-8") as f:
-        system_prompt = f.read()
+        # * Generate AI output
 
-    # * Build user prompt
+        log.info("Generating the completion...")
+        completion = controller.generate_completion(messages=messages)
+        completion_content = completion
 
-    user_prompt = (
-        "\n".join(
-            [
-                f"# Reference {i+1}: {match['metadata']['title']}\n{match['metadata']['text'].replace('\n#', '\n##')}\n"
-                for i, match in enumerate(results["matches"])
-            ]
+        out_path = os.path.join(issues_dir, "result.md")
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(completion_content)
+        log.info("Wrote completion output to %s", out_path)
+
+        # * Build jira content
+        _, adf = controller.build_jira_comment(
+            completion_content=completion_content,
+            references=matches,
+            issues_dir=os.path.join(PROMPTS_DIR, "issues", issue.key),
         )
-        + f"\n# {issue.fields.summary}\n{issue.fields.description or ''}\n"
-        + f"# {onlinehelp_comment.body}"
-    ).replace("\r", "")
 
-    log.info("Using model: %s", settings.azure.deployment_name)
-    messages: list[ChatCompletionMessageParam] = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]
-
-    # Write messages to PROMPTS_DIR/issues/issuekey.json
-    issues_dir = os.path.join(PROMPTS_DIR, "issues", issue.key)
-    os.makedirs(issues_dir, exist_ok=True)
-    for message in messages:
-        message_path = os.path.join(issues_dir, f"{message['role']}.md")
-        with open(message_path, "w", encoding="utf-8") as f:
-            f.write(str(message.get("content", "")))
-
-    log.info("Wrote messages to %s", issues_dir)
-
-    log.info("Generating the completion...")
-    start_time = time.time()
-    completion = client.chat.completions.create(
-        model=settings.azure.deployment_name,
-        messages=messages,
-        max_completion_tokens=16384,
-        stop=None,
-        stream=False,
-    )
-    completion_content = completion.choices[0].message.content or ""
-    # For local testing we read a pre-generated result from disk. In production
-    # you can re-enable the model call if needed.
-    # with open(
-    #     os.path.join(PROMPTS_DIR, "issues", issue.key, "result.md"),
-    #     "r",
-    #     encoding="utf-8",
-    # ) as f:
-    #     completion_content = f.read()
-    elapsed_time = time.time() - start_time
-    log.info("Obtained completion (took %.2f seconds)", elapsed_time)
-
-    out_path = os.path.join(issues_dir, "result.md")
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(completion_content)
-    log.info("Wrote completion output to %s", out_path)
-
-    # Build and optionally post the Jira comment
-    _, adf = build_jira_comment(
-        completion_content=completion_content,
-        results=results,
-        issues_dir=issues_dir,
-    )
-
-    # Optionally post the ADF via Jira REST API v3. Posting is controlled from settings (opt-in).
-    if not settings.jira.post_adf:
-        try:
-            resp = jira._session.post(  # type: ignore[attr-defined]
-                f"{jira._options['server']}/rest/api/3/issue/{issue.key}/comment",  # type: ignore
-                headers={"Content-Type": "application/json"},
-                data=json.dumps({"body": adf}),
-            )
-            log.info(
-                "HTTP %s when posting ADF comment to %s", resp.status_code, issue.key
-            )
-            resp.raise_for_status()
-        except Exception as exc:  # pragma: no cover - runtime posting may fail in CI
-            log.exception("Failed to post ADF comment: %s", exc)
+        controller.post_adf(issue, adf)
 
 
 if __name__ == "__main__":
