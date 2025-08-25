@@ -17,6 +17,7 @@ class JIRAConfig(BaseSettings):
     email: str = Field(frozen=True, min_length=1)
     api_token: str = Field(frozen=True, min_length=1, exclude=True)
     user_agent: str = Field(default="Cerm7-AI-project", frozen=True)
+    post_adf: bool = Field(default=False, frozen=True)
 
 
 class AzureEmbeddingsConfig(BaseSettings):
