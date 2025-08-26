@@ -20,7 +20,11 @@ from src.config import settings
 log = logging.getLogger(settings.log.name)
 
 # JQL: issues updated in the last 24 hours
-JQL = 'updated >= -52w AND project in ("PLAYG", "CERM7", "LRN")'
+JQL_PROJECTS = '", "'.join(settings.projects)
+JQL_KEYWORDS = " OR ".join(f'comment ~ "{keyword}"' for keyword in settings.keywords)
+JQL = f'updated >= -12w AND project in ("{JQL_PROJECTS}") AND ({JQL_KEYWORDS})'
+
+log.info(f"Using JQL: {JQL}")
 
 jira = JIRA(
     server=settings.jira.server,
@@ -28,17 +32,28 @@ jira = JIRA(
 )
 
 
-def process_comments() -> dict[Issue, list[Comment]]:
-    matching_comments: dict[Issue, list[Comment]] = {}
-    issues: list[Issue] = cast(
+def search_all_issues(jql: str, *, fields: list[str] | None = None) -> list[Issue]:
+    """Fetch all issues using Jira Cloud enhanced search with auto-pagination.
+
+    Pass maxResults=0 to enhanced_search_issues to fetch all pages using nextPageToken.
+    """
+    issues = cast(
         list[Issue],
         jira.enhanced_search_issues(
-            JQL,
-            fields=["comment"],
-            maxResults=5000,  # API only returns max 100 issues at a time
+            jql_str=jql,
+            fields=fields,
+            maxResults=0,  # 0 means fetch all pages (auto-paginate)
         ),
     )
-    log.info(f"Found {len(issues)} issues updated in the last 52 weeks.")
+    return issues
+
+
+def process_comments() -> dict[Issue, list[Comment]]:
+    matching_comments: dict[Issue, list[Comment]] = {}
+    issues: list[Issue] = search_all_issues(JQL, fields=["comment"])
+    log.info(
+        f"Fetched {len(issues)} issues updated in the last 52 weeks (auto-paginated)."
+    )
     for issue in issues:
         comments = issue.fields.comment.comments
         for comment in comments:
@@ -49,23 +64,20 @@ def process_comments() -> dict[Issue, list[Comment]]:
                 r"^h[1-6]\.\s*(online help|doc & test)\b", re.IGNORECASE
             )
             if pattern.match(first):
-                log.info(f"Match in {issue.key}")
                 matching_comments.setdefault(issue, []).append(comment)
-                run_custom_script(issue.key, body)
 
     return matching_comments
-
-
-def run_custom_script(issue_key: str, comment: str):
-    # Replace with your real logic
-    log.info(f"Running script for {issue_key} with comment:\n{comment[:200]}...")
 
 
 def main():
     matching_comments = process_comments()
     log.info(
-        f"Found {sum(len(comments) for comments in matching_comments.values())} comments in {len(matching_comments.keys())} issues in the last 52 weeks."
+        f"Found {sum(len(comments) for comments in matching_comments.values())} comments in {len(matching_comments.keys())} issues in the last 52 weeks.\n({', '.join(issue.key for issue in matching_comments.keys())})"
     )
+    log.info("Issues with multiple matching comments:")
+    for issue, comments in matching_comments.items():
+        if len(comments) > 1:
+            log.info(f" - {issue.key}: {len(comments)} comments")
 
 
 if __name__ == "__main__":
