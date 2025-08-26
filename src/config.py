@@ -76,7 +76,7 @@ class Settings(BaseSettings):
         embedding=AzureEmbeddingsConfig(
             endpoint=os.getenv("AZURE_EMBEDDING_ENDPOINT"),  # type: ignore
             deployment_name=os.getenv("AZURE_EMBEDDING_DEPLOYMENT_NAME"),  # type: ignore
-            dimension=os.getenv("AZURE_EMBEDDING_DIMENSION"),  # type: ignore
+            dimension=os.getenv("AZURE_EMBEDDING_DIMENSION", "1536"),  # type: ignore
         ),
     )
 
@@ -84,7 +84,7 @@ class Settings(BaseSettings):
         api_key=os.getenv("PINECONE_API_KEY"),  # type: ignore
         # environment=os.getenv("PINECONE_ENVIRONMENT"),  # type: ignore
         namespace=os.getenv("PINECONE_NAMESPACE"),  # type: ignore
-        index_name=os.getenv("PINECONE_INDEX_NAME"),  # type: ignore
+        index_name=os.getenv("PINECONE_INDEX"),  # type: ignore
     )
 
     log: LoggerConfig = LoggerConfig(
