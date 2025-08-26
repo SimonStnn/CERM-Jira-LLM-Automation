@@ -5,7 +5,7 @@ from urllib.parse import parse_qs, urlparse
 
 from dotenv import load_dotenv
 from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from rich.logging import RichHandler
 
 ENV_PATH: str = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
@@ -17,7 +17,6 @@ class JIRAConfig(BaseSettings):
     email: str = Field(frozen=True, min_length=1)
     api_token: str = Field(frozen=True, min_length=1, exclude=True)
     user_agent: str = Field(default="Cerm7-AI-project", frozen=True)
-    post_adf: bool = Field(default=False, frozen=True)
 
 
 class AzureEmbeddingsConfig(BaseSettings):
@@ -62,6 +61,24 @@ class LoggerConfig(BaseSettings):
 
 
 class Settings(BaseSettings):
+    #! Required for list parsing
+    model_config = SettingsConfigDict(populate_by_name=True)
+
+    # Only use explicitly provided init values; ignore environment/dotenv/file secrets for this model.
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: Any,
+        env_settings: Any,
+        dotenv_settings: Any,
+        file_secret_settings: Any,
+    ) -> tuple[Any, ...]:
+        return (init_settings,)
+
+    projects: list[str] = Field(default_factory=list, frozen=True)
+    keywords: list[str] = Field(default_factory=list, frozen=True)
+
     jira: JIRAConfig = JIRAConfig(
         server=os.getenv("JIRA_SERVER"),  # type: ignore
         email=os.getenv("JIRA_EMAIL"),  # type: ignore
@@ -93,11 +110,15 @@ class Settings(BaseSettings):
         name=os.getenv("LOG_NAME", "Cerm7-AI-project"),
     )
 
-    class Config:
-        env_file = ENV_PATH
 
-
-settings = Settings()
+settings = Settings(
+    projects=[
+        p.strip() for p in os.getenv("AIR_SEARCH_PROJECTS", "").split(",") if p.strip()
+    ],
+    keywords=[
+        k.strip() for k in os.getenv("AIR_SEARCH_KEYWORDS", "").split(",") if k.strip()
+    ],
+)
 
 
 def setup_logging():

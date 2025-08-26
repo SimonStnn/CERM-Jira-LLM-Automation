@@ -18,7 +18,8 @@ def main():
 
     system_prompt = controller.get_system_prompt()
 
-    results = controller.find_online_help_issues(projects=["PLAYG", "CERM7", "LRN"])
+    # Use projects from settings (parsed from env at startup)
+    results = controller.find_online_help_issues(projects=settings.projects)
     for issue, onlinehelp_comment in results:
         log.info("Processing issue %s comment %s", issue.key, onlinehelp_comment.id)
         matches = controller.query_pinecone(onlinehelp_comment.body)
