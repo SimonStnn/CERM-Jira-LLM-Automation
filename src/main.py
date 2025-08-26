@@ -18,51 +18,65 @@ def main():
 
     system_prompt = controller.get_system_prompt()
 
-    # Use projects from settings (parsed from env at startup)
-    results = controller.find_online_help_issues(projects=settings.projects)
-    for issue, onlinehelp_comment in results:
-        log.info("Processing issue %s comment %s", issue.key, onlinehelp_comment.id)
-        matches = controller.query_pinecone(onlinehelp_comment.body)
+    JQL_PROJECTS = '", "'.join(settings.projects)
+    JQL_KEYWORDS = " OR ".join(
+        f'comment ~ "{keyword}"' for keyword in settings.keywords
+    )
+    JQL = f'updated >= -12w AND project in ("{JQL_PROJECTS}") AND ({JQL_KEYWORDS})'
 
-        user_prompt = controller.build_user_prompt(
-            references=matches, issue=issue, onlinehelp_comment=onlinehelp_comment
-        )
+    log.info('Searching with JQL: "%s"...', JQL)
+    results = controller.find_online_help_issues(JQL)
+    # results is a dict[Issue, list[Comment]]
+    num_comments = sum(len(comments) for comments in results.values())
+    unique_issue_keys = sorted(issue.key for issue in results.keys())
+    num_issues = len(results.keys())
+    log.info(
+        f"Found {num_comments} comments in {num_issues} issues\n({', '.join(unique_issue_keys)})"
+    )
+    for issue, comments in results.items():
+        for onlinehelp_comment in comments:
+            log.info("Processing issue %s comment %s", issue.key, onlinehelp_comment.id)
+            matches = controller.query_pinecone(onlinehelp_comment.body)
 
-        log.info("Using model: %s", settings.azure.deployment_name)
-        messages: list[ChatCompletionMessageParam] = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
+            user_prompt = controller.build_user_prompt(
+                references=matches, issue=issue, onlinehelp_comment=onlinehelp_comment
+            )
 
-        # Write messages to PROMPTS_DIR/issues/issuekey.json
-        issues_dir = os.path.join(PROMPTS_DIR, "issues", issue.key)
-        os.makedirs(issues_dir, exist_ok=True)
-        for message in messages:
-            message_path = os.path.join(issues_dir, f"{message['role']}.md")
-            with open(message_path, "w", encoding="utf-8") as f:
-                f.write(str(message.get("content", "")))
+            log.info("Using model: %s", settings.azure.deployment_name)
+            messages: list[ChatCompletionMessageParam] = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
 
-        log.info("Wrote messages to %s", issues_dir)
+            # Write messages to PROMPTS_DIR/issues/issuekey.json
+            issues_dir = os.path.join(PROMPTS_DIR, "issues", issue.key)
+            os.makedirs(issues_dir, exist_ok=True)
+            for message in messages:
+                message_path = os.path.join(issues_dir, f"{message['role']}.md")
+                with open(message_path, "w", encoding="utf-8") as f:
+                    f.write(str(message.get("content", "")))
 
-        # * Generate AI output
+            log.info("Wrote messages to %s", issues_dir)
 
-        log.info("Generating the completion...")
-        completion = controller.generate_completion(messages=messages)
-        completion_content = completion
+            # * Generate AI output
 
-        out_path = os.path.join(issues_dir, "result.md")
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(completion_content)
-        log.info("Wrote completion output to %s", out_path)
+            log.info("Generating the completion...")
+            completion = controller.generate_completion(messages=messages)
+            completion_content = completion
 
-        # * Build jira content
-        _, adf = controller.build_jira_comment(
-            completion_content=completion_content,
-            references=matches,
-            issues_dir=os.path.join(PROMPTS_DIR, "issues", issue.key),
-        )
+            out_path = os.path.join(issues_dir, "result.md")
+            with open(out_path, "w", encoding="utf-8") as f:
+                f.write(completion_content)
+            log.info("Wrote completion output to %s", out_path)
 
-        controller.post_adf(issue, adf)
+            # * Build jira content
+            _, adf = controller.build_jira_comment(
+                completion_content=completion_content,
+                references=matches,
+                issues_dir=os.path.join(PROMPTS_DIR, "issues", issue.key),
+            )
+
+            controller.post_adf(issue, onlinehelp_comment, adf)
 
 
 if __name__ == "__main__":

@@ -63,22 +63,19 @@ class Controller:
 
         log.debug("Controller initialized")
 
-    def find_online_help_issues(
-        self, projects: list[str]
-    ) -> list[tuple[Issue, Comment]]:
-        # Fetch the issue from JIRA
-        JQL = f'updated >= -52w AND project in ({", ".join(map(repr, projects))})'
+    def find_online_help_issues(self, jql: str) -> dict[Issue, list[Comment]]:
+        # Fetch the issues from JIRA (last 52 weeks)
 
-        matching_comments: list[tuple[Issue, Comment]] = []
+        matching_comments: dict[Issue, list[Comment]] = {}
+        # Auto-paginate using Jira Cloud enhanced search (maxResults=0)
         issues: list[Issue] = cast(
             list[Issue],
-            self.jira.enhanced_search_issues(
-                JQL,
-                # fields=["comment"],
-                maxResults=5000,  # API only returns max 100 issues at a time
-            ),
+            self.jira.enhanced_search_issues(jql, maxResults=0),
         )
-        log.debug("Found %d issues updated in the last 52 weeks", len(issues))
+        log.debug(
+            "Fetched %d issues updated in the last 52 weeks (auto-paginated)",
+            len(issues),
+        )
 
         for issue in issues:
             comments = issue.fields.comment.comments
@@ -86,10 +83,11 @@ class Controller:
                 lines = str(comment.body).strip().splitlines()
                 first = " ".join(lines[:1]).lower()
                 pattern = re.compile(
-                    r"^h[1-6]\.\s*(online help|doc & test|test & doc)\b", re.IGNORECASE
+                    r"^h[1-6]\.\s*(online help|doc & test|test & doc)\b",
+                    re.IGNORECASE,
                 )
                 if pattern.match(first):
-                    matching_comments.append((issue, comment))
+                    matching_comments.setdefault(issue, []).append(comment)
 
         return matching_comments
 
@@ -179,15 +177,22 @@ class Controller:
         )
         return comment_text, adf
 
-    def post_adf(self, issue: Issue, adf: dict[str, Any]):
+    def post_adf(self, issue: Issue, comment: Comment, adf: dict[str, Any]):
         try:
+            url = f"{self.jira._options['server']}/rest/api/3/issue/{issue.key}/comment"  # type: ignore[attr-defined]
             resp = self.jira._session.post(  # type: ignore[attr-defined]
-                f"{self.jira._options['server']}/rest/api/3/issue/{issue.key}/comment",  # type: ignore
-                headers={"Content-Type": "application/json"},
-                data=json.dumps({"body": adf}),
+                url,
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                data=json.dumps({"body": adf, "parentId": str(comment.id)}),
             )
             log.info(
-                "HTTP %s when posting ADF comment to %s", resp.status_code, issue.key
+                "HTTP %s when posting ADF comment to issue %s (reply-to comment %s)",
+                resp.status_code,
+                issue.key,
+                comment.id,
             )
             resp.raise_for_status()
         except Exception as exc:  # pragma: no cover - runtime posting may fail in CI
