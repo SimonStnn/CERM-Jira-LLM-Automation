@@ -24,7 +24,7 @@ def main():
     )
     JQL = f'updated >= -12w AND project in ("{JQL_PROJECTS}") AND ({JQL_KEYWORDS})'
 
-    log.info('Searching with JQL: "%s"...', JQL)
+    log.info("Searching with JQL: '%s'...", JQL)
     results = controller.find_online_help_issues(JQL)
     # results is a dict[Issue, list[Comment]]
     num_comments = sum(len(comments) for comments in results.values())
@@ -76,6 +76,11 @@ def main():
                 issues_dir=os.path.join(PROMPTS_DIR, "issues", issue.key),
             )
 
+            log.info(
+                "Posting ADF reply to issue %s, comment %s...",
+                issue.key,
+                onlinehelp_comment.id,
+            )
             controller.post_adf(issue, onlinehelp_comment, adf)
 
 

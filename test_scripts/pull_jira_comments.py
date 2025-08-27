@@ -48,21 +48,21 @@ def search_all_issues(jql: str, *, fields: list[str] | None = None) -> list[Issu
     return issues
 
 
-def process_comments() -> dict[Issue, list[Comment]]:
+def search_relevant_comments() -> dict[Issue, list[Comment]]:
     matching_comments: dict[Issue, list[Comment]] = {}
-    issues: list[Issue] = search_all_issues(JQL, fields=["comment"])
-    log.info(
-        f"Fetched {len(issues)} issues updated in the last 52 weeks (auto-paginated)."
+    issues: list[Issue] = search_all_issues(
+        JQL, fields=["comment", "summary", "description", "created"]
     )
+    log.info(f"Fetched {len(issues)} issues from Jira (auto-paginated).")
+    keywords_pat = "|".join(re.escape(k) for k in settings.keywords)
+    pattern = re.compile(rf"^h[1-6]\.\s*(?:{keywords_pat})\b", re.IGNORECASE)
+
     for issue in issues:
         comments = issue.fields.comment.comments
         for comment in comments:
             body = str(comment.body).strip()
             lines = body.splitlines()
             first = " ".join(lines[:1]).lower()
-            pattern = re.compile(
-                r"^h[1-6]\.\s*(online help|doc & test)\b", re.IGNORECASE
-            )
             if pattern.match(first):
                 matching_comments.setdefault(issue, []).append(comment)
 
@@ -70,9 +70,9 @@ def process_comments() -> dict[Issue, list[Comment]]:
 
 
 def main():
-    matching_comments = process_comments()
+    matching_comments = search_relevant_comments()
     log.info(
-        f"Found {sum(len(comments) for comments in matching_comments.values())} comments in {len(matching_comments.keys())} issues in the last 52 weeks.\n({', '.join(issue.key for issue in matching_comments.keys())})"
+        f"Found {sum(len(comments) for comments in matching_comments.values())} comments in {len(matching_comments.keys())} issues\n({', '.join(issue.key for issue in matching_comments.keys())})"
     )
     log.info("Issues with multiple matching comments:")
     for issue, comments in matching_comments.items():
