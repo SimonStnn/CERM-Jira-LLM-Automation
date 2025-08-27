@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any
+from typing import Any, cast
 from urllib.parse import parse_qs, urlparse
 
 from dotenv import load_dotenv
@@ -13,51 +13,51 @@ load_dotenv(ENV_PATH, verbose=True)
 
 
 class JIRAConfig(BaseSettings):
-    server: str = Field(frozen=True)
+    server: str = Field(frozen=True, min_length=1)
     email: str = Field(frozen=True, min_length=1)
-    api_token: str = Field(frozen=True, min_length=1, exclude=True)
+    api_token: str = Field(frozen=True, min_length=1, exclude=True, repr=False)
     user_agent: str = Field(default="Cerm7-AI-project", frozen=True)
 
 
-class AzureEmbeddingsConfig(BaseSettings):
-    endpoint: str = Field(frozen=True)
-    deployment_name: str = Field(frozen=True)
-    dimension: int = Field(default=1536, frozen=True)
-
-
-class AzureConfig(BaseSettings):
-    endpoint: str = Field(frozen=True)
-    api_key: str = Field(frozen=True, min_length=1, exclude=True)
-    deployment_name: str = Field(frozen=True)
-    api_version: str = Field(frozen=True, min_length=1)
-    embedding: AzureEmbeddingsConfig = Field(frozen=True)
+class AzureBaseConfig(BaseSettings):
+    endpoint: str = Field(frozen=True, min_length=1)
+    deployment_name: str = Field(frozen=True, min_length=1)
+    api_version: str | None = Field(default=None, frozen=True)
 
     @model_validator(mode="before")
-    def model_before_validator(
-        cls, values: AzureEmbeddingsConfig | dict[str, str]
-    ) -> Any:
+    def model_before_validator(cls, values: Any | dict[str, str]) -> Any:
         if not isinstance(values, dict):
             return values
-        if endpoint := values.get("endpoint"):
+        if endpoint := cast(str | None, values.get("endpoint")):
             parsed = urlparse(endpoint)
             query = parse_qs(parsed.query)
             api_version = query.get("api-version") or query.get("api_version")
             if api_version and api_version[0]:
                 values["api_version"] = api_version[0]
-        return values
+        return cast(str, values)
+
+
+class AzureEmbeddingConfig(AzureBaseConfig):
+    dimension: int = Field(default=1536, frozen=True)
+
+
+class AzureConfig(AzureBaseConfig):
+    api_key: str = Field(frozen=True, min_length=1, exclude=True, repr=False)
+    triage: AzureBaseConfig = Field(frozen=True)
+    embedding: AzureEmbeddingConfig = Field(frozen=True)
 
 
 class PineconeConfig(BaseSettings):
-    api_key: str = Field(frozen=True, min_length=1, exclude=True)
+    api_key: str = Field(frozen=True, min_length=1, exclude=True, repr=False)
     # environment: str = Field(frozen=True)
-    namespace: str = Field(frozen=True)
-    index_name: str = Field(frozen=True)
+    namespace: str = Field(frozen=True, min_length=1)
+    index_name: str = Field(frozen=True, min_length=1)
 
 
 class LoggerConfig(BaseSettings):
-    level: str = Field(default="INFO", frozen=True)
-    datefmt: str = Field(default="%Y-%m-%d %H:%M:%S", frozen=True)
-    name: str = Field(frozen=True)
+    level: str = Field(default="INFO", frozen=True, min_length=1)
+    datefmt: str = Field(default="%Y-%m-%d %H:%M:%S", frozen=True, min_length=1)
+    name: str = Field(frozen=True, min_length=1)
 
 
 class Settings(BaseSettings):
@@ -80,28 +80,32 @@ class Settings(BaseSettings):
     keywords: list[str] = Field(default_factory=list, frozen=True)
 
     jira: JIRAConfig = JIRAConfig(
-        server=os.getenv("JIRA_SERVER"),  # type: ignore
-        email=os.getenv("JIRA_EMAIL"),  # type: ignore
-        api_token=os.getenv("JIRA_API_TOKEN"),  # type: ignore
-        user_agent=os.getenv("JIRA_USER_AGENT"),  # type: ignore
+        server=os.getenv("JIRA_SERVER", ""),
+        email=os.getenv("JIRA_EMAIL", ""),
+        api_token=os.getenv("JIRA_API_TOKEN", ""),
+        user_agent=os.getenv("JIRA_USER_AGENT", ""),
     )
 
     azure: AzureConfig = AzureConfig(
-        endpoint=os.getenv("AZURE_ENDPOINT"),  # type: ignore
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),  # type: ignore
-        deployment_name=os.getenv("AZURE_DEPLOYMENT_NAME"),  # type: ignore
-        embedding=AzureEmbeddingsConfig(
-            endpoint=os.getenv("AZURE_EMBEDDING_ENDPOINT"),  # type: ignore
-            deployment_name=os.getenv("AZURE_EMBEDDING_DEPLOYMENT_NAME"),  # type: ignore
-            dimension=os.getenv("AZURE_EMBEDDING_DIMENSION", "1536"),  # type: ignore
+        api_key=os.getenv("AZURE_OPENAI_API_KEY", ""),
+        endpoint=os.getenv("AZURE_ENDPOINT", ""),
+        deployment_name=os.getenv("AZURE_DEPLOYMENT_NAME", ""),
+        triage=AzureBaseConfig(
+            endpoint=os.getenv("AZURE_TRIAGE_ENDPOINT", ""),
+            deployment_name=os.getenv("AZURE_TRIAGE_DEPLOYMENT_NAME", ""),
+        ),
+        embedding=AzureEmbeddingConfig(
+            endpoint=os.getenv("AZURE_EMBEDDING_ENDPOINT", ""),
+            deployment_name=os.getenv("AZURE_EMBEDDING_DEPLOYMENT_NAME", ""),
+            dimension=int(os.getenv("AZURE_EMBEDDING_DIMENSION", "1536")),
         ),
     )
 
     pinecone: PineconeConfig = PineconeConfig(
-        api_key=os.getenv("PINECONE_API_KEY"),  # type: ignore
-        # environment=os.getenv("PINECONE_ENVIRONMENT"),  # type: ignore
-        namespace=os.getenv("PINECONE_NAMESPACE"),  # type: ignore
-        index_name=os.getenv("PINECONE_INDEX"),  # type: ignore
+        api_key=os.getenv("PINECONE_API_KEY", ""),
+        # environment=os.getenv("PINECONE_ENVIRONMENT", ""),
+        namespace=os.getenv("PINECONE_NAMESPACE", ""),
+        index_name=os.getenv("PINECONE_INDEX", ""),
     )
 
     log: LoggerConfig = LoggerConfig(
@@ -149,6 +153,8 @@ if __name__ == "__main__":
     from rich import print
 
     print(settings)
+
+    log.warning("API keys are not printed. Double check if they are present")
 
     log.setLevel("DEBUG")
 

@@ -30,6 +30,7 @@ class Controller:
     jira: JIRA
     pinecone: Pinecone
     client: AzureOpenAI
+    triage_client: AzureOpenAI
     embedding_client: AzureOpenAI
 
     def __init__(self) -> None:
@@ -49,6 +50,11 @@ class Controller:
             api_key=self.settings.azure.api_key,
             api_version=self.settings.azure.api_version,
             azure_endpoint=self.settings.azure.endpoint,
+        )
+        self.triage_client = AzureOpenAI(
+            api_key=self.settings.azure.api_key,
+            api_version=self.settings.azure.api_version,
+            azure_endpoint=self.settings.azure.triage.endpoint,
         )
         self.embedding_client = AzureOpenAI(
             api_key=self.settings.azure.api_key,

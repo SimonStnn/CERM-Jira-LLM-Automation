@@ -42,7 +42,11 @@ def main():
                 references=matches, issue=issue, onlinehelp_comment=onlinehelp_comment
             )
 
-            log.info("Using model: %s", settings.azure.deployment_name)
+            log.info(
+                "Using model: %s (triage: %s)",
+                settings.azure.deployment_name,
+                settings.azure.triage.deployment_name or "<disabled>",
+            )
             messages: list[ChatCompletionMessageParam] = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
