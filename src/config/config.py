@@ -15,7 +15,7 @@ class JIRAConfig(BaseSettings):
     server: str = Field(frozen=True, min_length=1)
     email: str = Field(frozen=True, min_length=1)
     api_token: str = Field(frozen=True, min_length=1, exclude=True, repr=False)
-    user_agent: str = Field(default="Cerm7-AI-project", frozen=True)
+    user_agent: str = Field(default="AI-project", frozen=True)
 
 
 class AzureBaseConfig(BaseSettings):
@@ -110,7 +110,7 @@ class Settings(BaseSettings):
     log: LoggerConfig = LoggerConfig(
         level=os.getenv("LOG_LEVEL", "INFO"),
         datefmt=os.getenv("LOG_DATEFMT", "%Y-%m-%d %H:%M:%S"),
-        name=os.getenv("LOG_NAME", "Cerm7-AI-project"),
+        name=os.getenv("LOG_NAME", "AI-project"),
     )
 
 

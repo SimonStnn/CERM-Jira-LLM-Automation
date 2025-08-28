@@ -9,8 +9,12 @@ if [ ! -f .env.template ]; then
   exit 1
 fi
 
-cp .env.template .env
-echo ".env created at: $(readlink -f .env)"
+if [ ! -f .env ]; then
+  cp .env.template .env
+  echo ".env created at: $(readlink -f .env)"
+fi else
+  echo ".env already exists at: $(readlink -f .env)"
+fi
 
 # Install requirements
 if [ -f requirements.txt ]; then

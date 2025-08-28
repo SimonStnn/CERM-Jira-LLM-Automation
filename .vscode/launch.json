@@ -6,7 +6,7 @@
     "configurations": [
 
         {
-            "name": "Python Debugger: Cerm7 Features AI Project",
+            "name": "Python Debugger: AI Project",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/src/main.py",

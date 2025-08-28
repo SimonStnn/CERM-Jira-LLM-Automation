@@ -30,7 +30,7 @@ def main():
     JQL_KEYWORDS = " OR ".join(
         f'comment ~ "{keyword}"' for keyword in settings.keywords
     )
-    JQL = f'updated >= -25w AND project in ("{JQL_PROJECTS}") AND ({JQL_KEYWORDS})'
+    JQL = f'updated >= -25h AND project in ("{JQL_PROJECTS}") AND ({JQL_KEYWORDS})'
 
     log.info("Searching with JQL: '%s'...", JQL)
     issues = gatherer.query(JQL)
