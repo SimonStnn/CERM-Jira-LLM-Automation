@@ -1,21 +1,21 @@
 from __future__ import annotations
 
 import datetime
-import json
-import os
+import logging
 from typing import TYPE_CHECKING, Any
 
-from config import log
+from config import settings
 
 if TYPE_CHECKING:
-    from controller import Reference
+    from services import Reference
+
+log = logging.getLogger(settings.log.name)
 
 
 def build_jira_comment(
     *,
     completion_content: str | None,
     references: list[Reference],
-    issues_dir: str,
 ) -> tuple[str, dict[str, Any]]:
     """Build a plain-text Jira comment and an ADF payload for the same content.
 
@@ -53,12 +53,6 @@ def build_jira_comment(
         comment_lines.append("")
 
     comment_text = "\n".join(comment_lines).strip()
-
-    # Write a plain-text copy for auditing
-    out_path = os.path.join(issues_dir, "comment.md")
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(comment_text)
-    log.info("Wrote plain-text comment to %s", out_path)
 
     # Build a Jira ADF comment where the references table lives inside an expand node.
     adf: dict[str, Any] = {"type": "doc", "version": 1, "content": []}
@@ -150,11 +144,5 @@ def build_jira_comment(
         }
 
         adf["content"].append(expand_node)
-
-    # Save the ADF payload for auditing
-    adf_out = os.path.join(issues_dir, "comment.adf.json")
-    with open(adf_out, "w", encoding="utf-8") as f:
-        json.dump(adf, f, ensure_ascii=False, indent=2)
-    log.info("Wrote ADF comment payload to %s", adf_out)
 
     return comment_text, adf

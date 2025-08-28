@@ -6,7 +6,6 @@ from urllib.parse import parse_qs, urlparse
 from dotenv import load_dotenv
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from rich.logging import RichHandler
 
 ENV_PATH: str = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
 load_dotenv(ENV_PATH, verbose=True)
@@ -125,25 +124,6 @@ settings = Settings(
 )
 
 
-def setup_logging():
-    handler = RichHandler(
-        rich_tracebacks=True,
-        markup=True,
-        show_time=True,
-        show_level=True,
-        show_path=True,
-        log_time_format=settings.log.datefmt,
-        omit_repeated_times=True,
-    )
-    root = logging.getLogger()
-    level = getattr(logging, str(settings.log.level), None)
-    if not isinstance(level, int):
-        level = logging.INFO
-    root.setLevel(level)
-    root.handlers = [handler]
-
-
-setup_logging()
 log = logging.getLogger(settings.log.name)
 
 log.info("Loaded env from: %s", ENV_PATH)

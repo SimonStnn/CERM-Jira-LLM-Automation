@@ -1,91 +1,120 @@
 from __future__ import annotations
 
-import os
+import logging
+import re
+import time
 
-from openai.types.chat.chat_completion_message_param import ChatCompletionMessageParam
-
-from config import log, settings
-from const import PROMPTS_DIR, __version__
-from controller import Controller
+from config import __version__, settings
+from services import Controller
+from services.builder import PromptBuilder
+from services.gatherer import IssueGatherer
 
 assert __version__ is not None, "Version must be set"
+
+log = logging.getLogger(settings.log.name)
 
 
 def main():
     log.info("Application started")
 
+    gatherer = IssueGatherer()
     controller = Controller()
 
-    system_prompt = controller.get_system_prompt()
+    # * Get system prompt
+
+    system_prompt = PromptBuilder.get_system_prompt()
+
+    # * Query jira for issues
 
     JQL_PROJECTS = '", "'.join(settings.projects)
     JQL_KEYWORDS = " OR ".join(
         f'comment ~ "{keyword}"' for keyword in settings.keywords
     )
-    JQL = f'updated >= -12w AND project in ("{JQL_PROJECTS}") AND ({JQL_KEYWORDS})'
+    JQL = f'updated >= -25w AND project in ("{JQL_PROJECTS}") AND ({JQL_KEYWORDS})'
 
     log.info("Searching with JQL: '%s'...", JQL)
-    results = controller.find_online_help_issues(JQL)
-    # results is a dict[Issue, list[Comment]]
-    num_comments = sum(len(comments) for comments in results.values())
-    unique_issue_keys = sorted(issue.key for issue in results.keys())
-    num_issues = len(results.keys())
+    issues = gatherer.query(JQL)
     log.info(
-        f"Found {num_comments} comments in {num_issues} issues\n({', '.join(unique_issue_keys)})"
+        "Processing %d issues... (%s)",
+        len(issues),
+        ", ".join(issue.key for issue in issues),
     )
-    for issue, comments in results.items():
-        for onlinehelp_comment in comments:
-            log.info("Processing issue %s comment %s", issue.key, onlinehelp_comment.id)
-            matches = controller.query_pinecone(onlinehelp_comment.body)
 
-            user_prompt = controller.build_user_prompt(
-                references=matches, issue=issue, onlinehelp_comment=onlinehelp_comment
+    # * Filter relevant comments from issue
+
+    for issue in issues:
+        log.info("---===== Processing issue %s... =====---", issue.key)
+        issue_start_time = time.time()
+        builder = PromptBuilder(
+            system_prompt=system_prompt,
+            issue=issue,
+        )
+
+        log.info("Filtering comments for issue %s using...", issue.key)
+        comments, _ = gatherer.ai_filter_comments(controller.triage_client, issue)
+        if not comments or len(comments) == 0:
+            log.warning("No relevant comments found for issue %s", issue.key)
+        log.info("Found %d relevant comments for issue %s", len(comments), issue.key)
+
+        for comment in comments:
+            builder.user_comments.append(
+                {
+                    "author": comment.author.displayName,
+                    "content": comment.body,
+                }
             )
 
-            log.info(
-                "Using model: %s (triage: %s)",
-                settings.azure.deployment_name,
-                settings.azure.triage.deployment_name or "<disabled>",
-            )
-            messages: list[ChatCompletionMessageParam] = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ]
+        # * Query Pinecone for relevant documentation
 
-            # Write messages to PROMPTS_DIR/issues/issuekey.json
-            issues_dir = os.path.join(PROMPTS_DIR, "issues", issue.key)
-            os.makedirs(issues_dir, exist_ok=True)
-            for message in messages:
-                message_path = os.path.join(issues_dir, f"{message['role']}.md")
-                with open(message_path, "w", encoding="utf-8") as f:
-                    f.write(str(message.get("content", "")))
+        TOP_K = 10
 
-            log.info("Wrote messages to %s", issues_dir)
+        log.info("Querying Pinecone for relevant documents... (top_k=%d)", TOP_K)
+        pinecone_results = gatherer.query_pinecone(issue.fields.summary, top_k=TOP_K)
+        log.info(
+            "Found %d relevant documents for issue %s", len(pinecone_results), issue.key
+        )
 
-            # * Generate AI output
+        builder.docs_references.extend(pinecone_results)
 
-            log.info("Generating the completion...")
-            completion = controller.generate_completion(messages=messages)
-            completion_content = completion
+        # * Build prompt
 
-            out_path = os.path.join(issues_dir, "result.md")
-            with open(out_path, "w", encoding="utf-8") as f:
-                f.write(completion_content)
-            log.info("Wrote completion output to %s", out_path)
+        compiled_messages = builder.compile_messages()
 
-            # * Build jira content
-            _, adf = controller.build_jira_comment(
-                completion_content=completion_content,
-                references=matches,
-                issues_dir=os.path.join(PROMPTS_DIR, "issues", issue.key),
-            )
+        # * Generate completion
 
-            log.info(
-                "Posting ADF reply to issue %s, comment %s...",
-                issue.key,
-                onlinehelp_comment.id,
-            )
-            controller.post_adf(issue, onlinehelp_comment, adf)
+        log.info("Generating the completion...")
+        completion_start_time = time.time()
+        completion = controller.generate_completion(messages=compiled_messages)
+        log.info(
+            "Obtained completion (took %.2f seconds)",
+            time.time() - completion_start_time,
+        )
+
+        # * Find the comment to reply to
+
+        keywords_pat = "|".join(re.escape(k) for k in settings.keywords)
+        pattern = re.compile(rf"^h[1-6]\.\s*(?:{keywords_pat})\b", re.IGNORECASE)
+        target_comment = IssueGatherer.get_target_comment(comments, pattern)
+
+        if not target_comment:
+            log.warning("No target comment found for issue %s", issue.key)
+
+        # * Build jira content
+
+        _, adf = gatherer.build_jira_comment(
+            completion_content=completion,
+            references=pinecone_results,
+        )
+
+        # * Post the ADF reply
+
+        gatherer.post_adf(issue, adf, reply_comment=target_comment)
+
+        log.info(
+            "---===== Finished processing issue %s (took %.2f seconds) =====---",
+            issue.key,
+            time.time() - issue_start_time,
+        )
 
 
 if __name__ == "__main__":

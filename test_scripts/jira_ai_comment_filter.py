@@ -31,7 +31,7 @@ if ROOT_SRC not in sys.path:
 from pull_jira_comments import search_relevant_comments
 
 from src.config import settings
-from src.controller import Controller
+from src.services import Controller
 
 log = logging.getLogger(settings.log.name)
 
