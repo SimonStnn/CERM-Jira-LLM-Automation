@@ -26,11 +26,21 @@ def main():
 
     # * Query jira for issues
 
+    jira = gatherer.jira
+
+    jira_user = jira.user(jira.current_user())
+
     JQL_PROJECTS = '", "'.join(settings.projects)
     JQL_KEYWORDS = " OR ".join(
         f'comment ~ "{keyword}"' for keyword in settings.keywords
     )
-    JQL = f'updated >= -25h AND project in ("{JQL_PROJECTS}") AND ({JQL_KEYWORDS})'
+    JQL = (
+        f"updated >= -25h"
+        f' AND project in ("{JQL_PROJECTS}")'
+        f" AND ({JQL_KEYWORDS})"
+        f' AND NOT issue in updatedBy("{jira_user.displayName}")'
+        f" ORDER BY updated DESC"
+    )
 
     log.info("Searching with JQL: '%s'...", JQL)
     issues = gatherer.query(JQL)
