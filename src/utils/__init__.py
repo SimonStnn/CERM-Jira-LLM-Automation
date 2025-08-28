@@ -1,4 +1,3 @@
 # pyright: reportUnusedImport=false
-from .logging import *
+from .logger import *  # Initialize app logging without shadowing stdlib
 from .text import *
-from .timing import *

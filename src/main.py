@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
 import time
 
@@ -8,6 +10,7 @@ from config import __version__, settings
 from services import Controller
 from services.builder import PromptBuilder
 from services.gatherer import IssueGatherer
+from utils.utils import save_to_file
 
 assert __version__ is not None, "Version must be set"
 
@@ -15,10 +18,13 @@ log = logging.getLogger(settings.log.name)
 
 
 def main():
-    log.info("Application started")
+    log.info("Application started (v%s)", __version__)
 
     gatherer = IssueGatherer()
     controller = Controller()
+
+    # Log settings
+    save_to_file(settings.model_dump_json(), "settings.json")
 
     # * Get system prompt
 
@@ -42,6 +48,8 @@ def main():
         f" ORDER BY updated DESC"
     )
 
+    save_to_file(JQL, "jira_query.jql")
+
     log.info("Searching with JQL: '%s'...", JQL)
     issues = gatherer.query(JQL)
     log.info(
@@ -61,10 +69,12 @@ def main():
         )
 
         log.info("Filtering comments for issue %s using...", issue.key)
-        comments, _ = gatherer.ai_filter_comments(controller.triage_client, issue)
+        comments, scores = gatherer.ai_filter_comments(controller.triage_client, issue)
         if not comments or len(comments) == 0:
             log.warning("No relevant comments found for issue %s", issue.key)
         log.info("Found %d relevant comments for issue %s", len(comments), issue.key)
+
+        save_to_file(json.dumps(scores), "comment_scores.json", subdir=issue.key)
 
         for comment in comments:
             builder.user_comments.append(
@@ -86,9 +96,22 @@ def main():
 
         builder.docs_references.extend(pinecone_results)
 
+        save_to_file(
+            json.dumps([doc.to_dict() for doc in pinecone_results]),
+            "pinecone_results.json",
+            subdir=issue.key,
+        )
+
         # * Build prompt
 
         compiled_messages = builder.compile_messages()
+
+        for i, message in enumerate(compiled_messages):
+            save_to_file(
+                json.dumps(getattr(message, "content", "")),
+                f"prompt_{i}.{message['role']}.md",
+                subdir=os.path.join(issue.key, "prompt"),
+            )
 
         # * Generate completion
 
@@ -99,6 +122,8 @@ def main():
             "Obtained completion (took %.2f seconds)",
             time.time() - completion_start_time,
         )
+
+        save_to_file(completion, "completion.md", subdir=issue.key)
 
         # * Find the comment to reply to
 
@@ -115,6 +140,8 @@ def main():
             completion_content=completion,
             references=pinecone_results,
         )
+
+        save_to_file(json.dumps(adf), "adf.json", subdir=issue.key)
 
         # * Post the ADF reply
 
