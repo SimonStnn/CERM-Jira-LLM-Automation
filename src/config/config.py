@@ -76,6 +76,7 @@ class Settings(BaseSettings):
 
     projects: list[str] = Field(default_factory=list, frozen=True)
     keywords: list[str] = Field(default_factory=list, frozen=True)
+    jql_override: str | None = Field(default=None, frozen=True)
 
     jira: JIRAConfig = JIRAConfig(
         server=os.getenv("JIRA_SERVER", ""),
@@ -119,6 +120,7 @@ settings = Settings(
     keywords=[
         k.strip() for k in os.getenv("AIR_SEARCH_KEYWORDS", "").split(",") if k.strip()
     ],
+    jql_override=os.getenv("AIR_JQL_OVERRIDE") or None,
 )
 
 

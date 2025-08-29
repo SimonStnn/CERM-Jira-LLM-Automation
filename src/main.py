@@ -143,11 +143,15 @@ def main():
         f'comment ~ "{keyword}"' for keyword in settings.keywords
     )
     JQL = (
-        f"updated >= -1w"
-        f' AND project in ("{JQL_PROJECTS}")'
-        f" AND ({JQL_KEYWORDS})"
-        f' AND NOT issue in updatedBy("{jira_user.displayName}")'
-        f" ORDER BY updated DESC"
+        settings.jql_override
+        if settings.jql_override and len(settings.jql_override) > 0
+        else (
+            f"updated >= -1w"
+            f' AND project in ("{JQL_PROJECTS}")'
+            f" AND ({JQL_KEYWORDS})"
+            f' AND NOT issue in updatedBy("{jira_user.displayName}")'
+            f" ORDER BY updated DESC"
+        )
     )
 
     save_to_file(JQL, "jira_query.jql")
