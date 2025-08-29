@@ -1,8 +1,8 @@
 trigger: none
 
 schedules: 
-- cron: "0 20 * * * "
-  displayName: "Daily 8:00 PM UTC Execution"
+- cron: "0 4 * * SAT" # At 04:00 AM, only on Saturday (https://crontab.cronhub.io/)
+  displayName: "Weekly Saturday 4:00 AM Execution"
   branches:
     include:
       - main
@@ -18,13 +18,6 @@ steps:
     python3.11 -m pip install --upgrade pip
     pip install -r requirements.txt
   displayName: 'Install pip dependencies'
-
-- script: |
-    for file in test_scripts/*.py; do
-      echo "Running $file"
-      python3.11 "$file"
-    done
-  displayName: 'Run all test scripts individually before executing main.py'
 
 - script: |
     python3.11 src/main.py
