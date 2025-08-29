@@ -143,7 +143,7 @@ def main():
         f'comment ~ "{keyword}"' for keyword in settings.keywords
     )
     JQL = (
-        f"updated >= -25h"
+        f"updated >= -1w"
         f' AND project in ("{JQL_PROJECTS}")'
         f" AND ({JQL_KEYWORDS})"
         f' AND NOT issue in updatedBy("{jira_user.displayName}")'
