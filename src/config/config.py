@@ -74,9 +74,9 @@ class Settings(BaseSettings):
     ) -> tuple[Any, ...]:
         return (init_settings,)
 
-    projects: list[str] = Field(default_factory=list, frozen=True)
+    jql: str = Field(frozen=True, min_length=1)
+    project: str = Field(default="CERM7", frozen=True, min_length=1)
     keywords: list[str] = Field(default_factory=list, frozen=True)
-    jql_override: str | None = Field(default=None, frozen=True)
 
     jira: JIRAConfig = JIRAConfig(
         server=os.getenv("JIRA_SERVER", ""),
@@ -114,13 +114,11 @@ class Settings(BaseSettings):
 
 
 settings = Settings(
-    projects=[
-        p.strip() for p in os.getenv("AIR_SEARCH_PROJECTS", "").split(",") if p.strip()
-    ],
+    jql=os.getenv("AIR_SEARCH_JQL") or "",
+    project=os.getenv("AIR_SEARCH_PROJECT", "CERM7"),
     keywords=[
         k.strip() for k in os.getenv("AIR_SEARCH_KEYWORDS", "").split(",") if k.strip()
     ],
-    jql_override=os.getenv("AIR_JQL_OVERRIDE") or None,
 )
 
 

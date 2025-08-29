@@ -24,13 +24,55 @@ log = logging.getLogger(settings.log.name)
 
 
 def process_issue(
-    gatherer: IssueGatherer, controller: Controller, system_prompt: str, issue: Issue
+    gatherer: IssueGatherer,
+    controller: Controller,
+    system_prompt: str,
+    lrn_issue: Issue,
 ):
-    log.info("---===== Processing issue %s... =====---", issue.key)
+    log.info("---===== Processing issue %s... =====---", lrn_issue.key)
     issue_start_time = time.time()
     builder = PromptBuilder(
         system_prompt=system_prompt,
-        issue=issue,
+        issue=lrn_issue,
+    )
+
+    # * Find linked issues
+
+    # Get related CERM7 issue
+    issue_keys: list[str] = []
+    for link in lrn_issue.fields.issuelinks:
+        if hasattr(link, "outwardIssue"):
+            outwardIssue = link.outwardIssue
+            issue_keys.append(outwardIssue.key)
+        if hasattr(link, "inwardIssue"):
+            inwardIssue = link.inwardIssue
+            issue_keys.append(inwardIssue.key)
+
+    linked_issues = [
+        gatherer.jira.issue(key)
+        for key in issue_keys
+        if key.startswith(settings.project)
+    ]
+
+    if not linked_issues:
+        log.warning(
+            "No linked %s issues found for issue %s. Only found %s",
+            settings.project,
+            lrn_issue.key,
+            issue_keys,
+        )
+        return
+
+    issue = linked_issues[0]
+    save_to_file(
+        json.dumps(
+            [
+                issue.key,
+                f"only picked first linked issue from {', '.join(issue.key for issue in linked_issues)}",
+            ]
+        ),
+        "linked_issues.json",
+        subdir=issue.key,
     )
 
     log.info("Filtering comments for issue %s using...", issue.key)
@@ -73,7 +115,7 @@ def process_issue(
 
     for i, message in enumerate(compiled_messages):
         save_to_file(
-            json.dumps(getattr(message, "content", "")),
+            str(message.get("content")),
             f"prompt_{i}.{message['role']}.md",
             subdir=os.path.join(issue.key, "prompt"),
         )
@@ -110,7 +152,9 @@ def process_issue(
 
     # * Post the ADF reply
 
-    gatherer.post_adf(issue, adf, reply_comment=target_comment)
+    gatherer.post_adf(lrn_issue, adf, reply_comment=target_comment)
+
+    log.info("Posted ADF reply for issue %s", lrn_issue.key)
 
     log.info(
         "---===== Finished processing issue %s (took %.2f seconds) =====---",
@@ -134,45 +178,25 @@ def main():
 
     # * Query jira for issues
 
-    jira = gatherer.jira
+    save_to_file(settings.jql, "jira_query.jql")
 
-    jira_user = jira.user(jira.current_user())
-
-    JQL_PROJECTS = '", "'.join(settings.projects)
-    JQL_KEYWORDS = " OR ".join(
-        f'comment ~ "{keyword}"' for keyword in settings.keywords
-    )
-    JQL = (
-        settings.jql_override
-        if settings.jql_override and len(settings.jql_override) > 0
-        else (
-            f"updated >= -1w"
-            f' AND project in ("{JQL_PROJECTS}")'
-            f" AND ({JQL_KEYWORDS})"
-            f' AND NOT issue in updatedBy("{jira_user.displayName}")'
-            f" ORDER BY updated DESC"
-        )
-    )
-
-    save_to_file(JQL, "jira_query.jql")
-
-    log.info("Searching with JQL: '%s'...", JQL)
-    issues = gatherer.query(JQL)
+    log.info("Searching with JQL: '%s'...", settings.jql)
+    lrn_issues = gatherer.query(settings.jql)
     log.info(
         "Processing %d issues... (%s)",
-        len(issues),
-        ", ".join(issue.key for issue in issues),
+        len(lrn_issues),
+        ", ".join(issue.key for issue in lrn_issues),
     )
 
-    save_to_file(json.dumps([issue.key for issue in issues]), "jira_issues.json")
+    save_to_file(json.dumps([issue.key for issue in lrn_issues]), "jira_issues.json")
 
     # * Filter relevant comments from issue
 
-    for issue in issues:
+    for lrn_issue in lrn_issues:
         try:
-            process_issue(gatherer, controller, system_prompt, issue)
+            process_issue(gatherer, controller, system_prompt, lrn_issue)
         except Exception as e:
-            log.error("Error processing issue %s: %s", issue.key, e)
+            log.error("Error processing issue %s: %s", lrn_issue.key, e)
 
 
 if __name__ == "__main__":
