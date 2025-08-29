@@ -55,7 +55,6 @@ class PineconeConfig(BaseSettings):
 
 class LoggerConfig(BaseSettings):
     level: str = Field(default="INFO", frozen=True, min_length=1)
-    datefmt: str = Field(default="%Y-%m-%d %H:%M:%S", frozen=True, min_length=1)
     name: str = Field(frozen=True, min_length=1)
 
 
@@ -109,7 +108,6 @@ class Settings(BaseSettings):
 
     log: LoggerConfig = LoggerConfig(
         level=os.getenv("LOG_LEVEL", "INFO"),
-        datefmt=os.getenv("LOG_DATEFMT", "%Y-%m-%d %H:%M:%S"),
         name=os.getenv("LOG_NAME", "AI-project"),
     )
 
@@ -135,11 +133,3 @@ if __name__ == "__main__":
     print(settings)
 
     log.warning("API keys are not printed. Double check if they are present")
-
-    log.setLevel("DEBUG")
-
-    log.debug("Debug message")
-    log.info("Info message")
-    log.warning("Warning message")
-    log.error("Error message")
-    log.critical("Critical message")

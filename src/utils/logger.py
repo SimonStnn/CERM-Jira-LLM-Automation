@@ -68,7 +68,7 @@ def setup_logging():
         show_time=True,
         show_level=True,
         show_path=True,
-        log_time_format=settings.log.datefmt,
+        log_time_format="%Y-%m-%d %H:%M:%S",
         omit_repeated_times=True,
     )
     root = logging.getLogger()
@@ -96,10 +96,9 @@ def setup_logging():
     root.handlers = [console_handler, file_handler]
 
 
-setup_logging()
-
 if __name__ == "__main__":
-    # Run the application
+    setup_logging()
+
     log = logging.getLogger("test-logger")
 
     log.debug("Debug message")

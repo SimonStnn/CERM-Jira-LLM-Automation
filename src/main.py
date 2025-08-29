@@ -12,9 +12,13 @@ from config import __version__, settings
 from services import Controller
 from services.builder import PromptBuilder
 from services.gatherer import IssueGatherer
-from utils.utils import save_to_file
+from utils import save_to_file, setup_logging
 
 assert __version__ is not None, "Version must be set"
+
+
+setup_logging()
+
 
 log = logging.getLogger(settings.log.name)
 
