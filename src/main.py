@@ -134,12 +134,12 @@ def process_issue(
 
     # * Find the comment to reply to
 
-    keywords_pat = "|".join(re.escape(k) for k in settings.keywords)
-    pattern = re.compile(rf"^h[1-6]\.\s*(?:{keywords_pat})\b", re.IGNORECASE)
-    target_comment = IssueGatherer.get_target_comment(comments, pattern)
+    # keywords_pat = "|".join(re.escape(k) for k in settings.keywords)
+    # pattern = re.compile(rf"^h[1-6]\.\s*(?:{keywords_pat})\b", re.IGNORECASE)
+    # target_comment = IssueGatherer.get_target_comment(comments, pattern)
 
-    if not target_comment:
-        log.warning("No target comment found for issue %s", issue.key)
+    # if not target_comment:
+    #     log.warning("No target comment found for issue %s", issue.key)
 
     # * Build jira content
 
@@ -152,7 +152,7 @@ def process_issue(
 
     # * Post the ADF reply
 
-    gatherer.post_adf(lrn_issue, adf, reply_comment=target_comment)
+    gatherer.post_adf(lrn_issue, adf)  # , reply_comment=target_comment)
 
     log.info("Posted ADF reply for issue %s", lrn_issue.key)
 
