@@ -62,8 +62,9 @@ class Controller:
         user_prompt = (
             "\n".join(
                 [
-                    f"# Reference {i+1}: {ref.title}\n\n{ref.text.replace('\n#', '\n##')}\n"
+                    f"# Reference {i+1}: {ref.title}\n\n{replaced_text}\n"
                     for i, ref in enumerate(references)
+                    for replaced_text in [ref.text.replace('\n#', '\n##')]
                 ]
             )
             + f"\n# {issue.fields.summary}"

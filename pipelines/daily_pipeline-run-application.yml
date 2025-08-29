@@ -1,0 +1,53 @@
+trigger: none
+
+schedules: 
+- cron: "0 20 * * * "
+  displayName: "Daily 8:00 PM UTC Execution"
+  branches:
+    include:
+      - main
+
+variables:
+- group: jira-ai-project-variables-group
+
+pool: Default
+
+
+steps:
+- script: |
+    python3.11 -m pip install --upgrade pip
+    pip install -r requirements.txt
+  displayName: 'Install pip dependencies'
+
+- script: |
+    for file in test_scripts/*.py; do
+      echo "Running $file"
+      python3.11 "$file"
+    done
+  displayName: 'Run all test scripts individually before executing main.py'
+
+- script: |
+    python3.11 src/main.py
+  displayName: 'Run application'
+  continueOnError: true
+
+- script: |
+    set -e
+    LOG_DIR="log/$(date +%Y)/$(date +%m)/$(date +%d)"
+    if [ -d "$LOG_DIR" ]; then
+      echo "Found logs in $LOG_DIR"
+    else
+      echo "No logs found in $LOG_DIR; creating placeholder."
+      mkdir -p "$LOG_DIR"
+    fi
+    echo "##vso[task.setvariable variable=LOG_DIR]$LOG_DIR"
+  displayName: 'Detect log directory and set variable'
+
+- task: PublishPipelineArtifact@1
+  inputs:
+    targetPath: $(LOG_DIR)
+    artifact: logs-$(Build.BuildId)
+    publishLocation: pipeline
+  displayName: 'Publish logs as pipeline artifact'
+
+
