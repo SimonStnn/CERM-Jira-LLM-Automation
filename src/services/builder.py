@@ -51,6 +51,10 @@ class PromptBuilder:
         return self.issue.fields.summary
 
     @property
+    def description(self) -> str | None:
+        return self.issue.fields.description
+
+    @property
     def user_comments(self) -> list[UserComment]:
         return self._user_comments
 
@@ -86,6 +90,9 @@ class PromptBuilder:
 
         if self.topic:
             parts.append(f"# Topic\n{self.topic}")
+
+        if self.description:
+            parts.append(f"## Description\n{self.description}")
 
         if self.user_comments:
             lines: list[str] = ["## Curated developer comments (from Jira)"]
