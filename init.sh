@@ -12,7 +12,7 @@ fi
 if [ ! -f .env ]; then
   cp .env.template .env
   echo ".env created at: $(readlink -f .env)"
-fi else
+else
   echo ".env already exists at: $(readlink -f .env)"
 fi
 

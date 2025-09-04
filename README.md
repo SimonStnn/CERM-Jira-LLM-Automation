@@ -9,6 +9,8 @@ RAG-powered Jira Cloud triage automation using Azure OpenAI and the Pinecone vec
 - Publishes the answer to the Jira issue as an Atlassian Document Format (ADF) comment with a References table.
 
 ---
+![Flowchart Diagram](/resources/images/flowchart/ai-jira-briefing-diagram.svg)
+---
 
 ## How it works
 
