@@ -8,11 +8,10 @@ RAG-powered Jira Cloud triage automation using Azure OpenAI and the Pinecone vec
 - Builds a Retrieval‑Augmented Generation (RAG) context and Chat Completions messages (system + user) to produce a concise end‑user reply.
 - Publishes the answer to the Jira issue as an Atlassian Document Format (ADF) comment with a References table.
 
----
-![Flowchart Diagram](/resources/images/flowchart/ai-jira-briefing-diagram.svg)
----
 
 ## How it works
+
+![Flowchart Diagram](/resources/images/flowchart/ai-jira-briefing-diagram.png)
 
 High-level flow:
 
