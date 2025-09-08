@@ -1,11 +1,10 @@
 # pyright: reportUnknownMemberType=false
 import logging
 import os
-import re
 import sys
 from typing import cast
 
-from jira import JIRA, Comment, Issue
+from jira import JIRA, Issue
 
 # Allow running this script directly: ensure the workspace root is on sys.path so
 # `from src.config import settings` works whether the package is imported or the
@@ -19,12 +18,9 @@ from src.config import settings
 
 log = logging.getLogger(settings.log.name)
 
-# JQL: issues updated in the last 24 hours
-JQL_PROJECTS = '", "'.join(settings.projects)
-JQL_KEYWORDS = " OR ".join(f'comment ~ "{keyword}"' for keyword in settings.keywords)
-JQL = f'updated >= -12w AND project in ("{JQL_PROJECTS}") AND ({JQL_KEYWORDS})'
-
-log.info(f"Using JQL: {JQL}")
+# Use the configured JQL directly for a simple connectivity test
+JQL = settings.jql or "updated >= -1d ORDER BY updated DESC"
+log.info("Using JQL: %s", JQL)
 
 jira = JIRA(
     server=settings.jira.server,
@@ -48,36 +44,21 @@ def search_all_issues(jql: str, *, fields: list[str] | None = None) -> list[Issu
     return issues
 
 
-def search_relevant_comments() -> dict[Issue, list[Comment]]:
-    matching_comments: dict[Issue, list[Comment]] = {}
+def fetch_issues() -> list[Issue]:
     issues: list[Issue] = search_all_issues(
-        JQL, fields=["comment", "summary", "description", "created"]
+        JQL, fields=["summary", "description", "created", "comment"]
     )
-    log.info(f"Fetched {len(issues)} issues from Jira (auto-paginated).")
-    keywords_pat = "|".join(re.escape(k) for k in settings.keywords)
-    pattern = re.compile(rf"^h[1-6]\.\s*(?:{keywords_pat})\b", re.IGNORECASE)
-
-    for issue in issues:
-        comments = issue.fields.comment.comments
-        for comment in comments:
-            body = str(comment.body).strip()
-            lines = body.splitlines()
-            first = " ".join(lines[:1]).lower()
-            if pattern.match(first):
-                matching_comments.setdefault(issue, []).append(comment)
-
-    return matching_comments
+    return issues
 
 
 def main():
-    matching_comments = search_relevant_comments()
-    log.info(
-        f"Found {sum(len(comments) for comments in matching_comments.values())} comments in {len(matching_comments.keys())} issues\n({', '.join(issue.key for issue in matching_comments.keys())})"
-    )
-    log.info("Issues with multiple matching comments:")
-    for issue, comments in matching_comments.items():
-        if len(comments) > 1:
-            log.info(f" - {issue.key}: {len(comments)} comments")
+    issues = fetch_issues()
+    log.info("Fetched %d issues: %s", len(issues), ", ".join(i.key for i in issues))
+    # Print a small summary with comment counts
+    for issue in issues:
+        comments = getattr(issue.fields, "comment", None)
+        count = len(getattr(comments, "comments", []) or [])
+        log.info("- %s: %d comments", issue.key, count)
 
 
 if __name__ == "__main__":

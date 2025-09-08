@@ -7,7 +7,9 @@ from dotenv import load_dotenv
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ENV_PATH: str = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".env"))
+ENV_PATH: str = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+)
 load_dotenv(ENV_PATH, verbose=True)
 
 
@@ -76,7 +78,6 @@ class Settings(BaseSettings):
 
     jql: str = Field(frozen=True, min_length=1)
     project: str = Field(default="CERM7", frozen=True, min_length=1)
-    keywords: list[str] = Field(default_factory=list, frozen=True)
 
     jira: JIRAConfig = JIRAConfig(
         server=os.getenv("JIRA_SERVER", ""),
@@ -96,7 +97,6 @@ class Settings(BaseSettings):
         embedding=AzureEmbeddingConfig(
             endpoint=os.getenv("AZURE_EMBEDDING_ENDPOINT", ""),
             deployment_name=os.getenv("AZURE_EMBEDDING_DEPLOYMENT_NAME", ""),
-            dimension=int(os.getenv("AZURE_EMBEDDING_DIMENSION", "1536")),
         ),
     )
 
@@ -113,12 +113,10 @@ class Settings(BaseSettings):
     )
 
 
+print("Loading env from: %s" % ENV_PATH)
 settings = Settings(
     jql=os.getenv("AIR_SEARCH_JQL") or "",
     project=os.getenv("AIR_SEARCH_PROJECT", "CERM7"),
-    keywords=[
-        k.strip() for k in os.getenv("AIR_SEARCH_KEYWORDS", "").split(",") if k.strip()
-    ],
 )
 
 

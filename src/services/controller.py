@@ -85,8 +85,6 @@ class Controller:
 
         log.debug("Controller initialized")
 
-    # ----- Helpers for AI comment filtering -----
-
     @classmethod
     def _compact(cls, text: str, limit: int = 1200) -> str:
         text = (text or "").replace("\r", "").strip()
@@ -161,8 +159,6 @@ class Controller:
                 return None
         return None
 
-    # ----- Public operations (merged from IssueGatherer) -----
-
     def query(self, jql: str) -> list[Issue]:
         issues: list[Issue] = cast(
             list[Issue],
@@ -211,6 +207,7 @@ class Controller:
         query_embedding = (
             self.embedding_client.embeddings.create(
                 model=settings.azure.embedding.deployment_name,
+                dimensions=settings.azure.embedding.dimension,
                 input=query,
             )
             .data[0]

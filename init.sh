@@ -29,6 +29,6 @@ pre-commit install
 
 echo "Setup complete."
 echo "---"
-echo "An env file has been created at: $(readlink -f .env)"
-echo "Remember to set your environment variables in the .env file."
+echo "Env files available at: $(readlink -f .env)
+echo "Remember to set your environment variables in .env."
 echo "Once set, start the application with 'python src/main.py'"

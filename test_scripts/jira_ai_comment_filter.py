@@ -28,7 +28,7 @@ if ROOT_SRC not in sys.path:
     sys.path.insert(0, ROOT_SRC)
 
 
-from pull_jira_comments import search_relevant_comments
+from pull_jira_comments import fetch_issues
 
 from src.config import settings
 from src.services import Controller
@@ -203,12 +203,9 @@ def process_issue(issue: Issue, controller: Controller):
 
 def main():
     controller = Controller()
-    matching_comments = search_relevant_comments()
-    log.info(
-        f"Found {sum(len(comments) for comments in matching_comments.values())} comments in {len(matching_comments.keys())} issues\n({', '.join(issue.key for issue in matching_comments.keys())})"
-    )
-
-    for issue in matching_comments.keys():
+    issues = fetch_issues()
+    log.info("Fetched %d issues: %s", len(issues), ", ".join(i.key for i in issues))
+    for issue in issues:
         process_issue(issue, controller)
 
 
