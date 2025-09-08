@@ -10,7 +10,6 @@ from jira import Issue
 from config import __version__, settings
 from services import Controller
 from services.builder import PromptBuilder
-from services.gatherer import IssueGatherer
 from utils import save_to_file, setup_logging
 
 assert __version__ is not None, "Version must be set"
@@ -23,7 +22,6 @@ log = logging.getLogger(settings.log.name)
 
 
 def process_issue(
-    gatherer: IssueGatherer,
     controller: Controller,
     system_prompt: str,
     lrn_issue: Issue,
@@ -48,7 +46,7 @@ def process_issue(
             issue_keys.append(inwardIssue.key)
 
     linked_issues = [
-        gatherer.jira.issue(key)
+        controller.jira.issue(key)
         for key in issue_keys
         if key.startswith(settings.project)
     ]
@@ -67,20 +65,20 @@ def process_issue(
         json.dumps(
             [
                 issue.key,
-                f"only picked first linked issue from {', '.join(issue.key for issue in linked_issues)}",
+                f"only processed first linked issue from [{', '.join(issue.key for issue in linked_issues)}]",
             ]
         ),
         "linked_issues.json",
-        subdir=issue.key,
+        subdir=lrn_issue.key,
     )
 
     log.info("Filtering comments for issue %s using...", issue.key)
-    comments, scores = gatherer.ai_filter_comments(controller.triage_client, issue)
+    comments, scores = controller.ai_filter_comments(issue)
     if not comments or len(comments) == 0:
         log.warning("No relevant comments found for issue %s", issue.key)
     log.info("Found %d relevant comments for issue %s", len(comments), issue.key)
 
-    save_to_file(json.dumps(scores), "comment_scores.json", subdir=issue.key)
+    save_to_file(json.dumps(scores), "comment_scores.json", subdir=lrn_issue.key)
 
     for comment in comments:
         builder.user_comments.append(
@@ -95,7 +93,7 @@ def process_issue(
     TOP_K = 10
 
     log.info("Querying Pinecone for relevant documents... (top_k=%d)", TOP_K)
-    pinecone_results = gatherer.query_pinecone(issue.fields.summary, top_k=TOP_K)
+    pinecone_results = controller.query_pinecone(issue.fields.summary, top_k=TOP_K)
     log.info(
         "Found %d relevant documents for issue %s", len(pinecone_results), issue.key
     )
@@ -105,7 +103,7 @@ def process_issue(
     save_to_file(
         json.dumps([doc.to_dict() for doc in pinecone_results]),
         "pinecone_results.json",
-        subdir=issue.key,
+        subdir=lrn_issue.key,
     )
 
     # * Build prompt
@@ -116,7 +114,7 @@ def process_issue(
         save_to_file(
             str(message.get("content")),
             f"prompt_{i}.{message['role']}.md",
-            subdir=os.path.join(issue.key, "prompt"),
+            subdir=os.path.join(lrn_issue.key, "prompt"),
         )
 
     # * Generate completion
@@ -129,29 +127,29 @@ def process_issue(
         time.time() - completion_start_time,
     )
 
-    save_to_file(completion, "completion.md", subdir=issue.key)
+    save_to_file(completion, "completion.md", subdir=lrn_issue.key)
 
     # * Find the comment to reply to
 
     # keywords_pat = "|".join(re.escape(k) for k in settings.keywords)
     # pattern = re.compile(rf"^h[1-6]\.\s*(?:{keywords_pat})\b", re.IGNORECASE)
-    # target_comment = IssueGatherer.get_target_comment(comments, pattern)
+    # target_comment = Controller.get_target_comment(comments, pattern)
 
     # if not target_comment:
     #     log.warning("No target comment found for issue %s", issue.key)
 
     # * Build jira content
 
-    _, adf = gatherer.build_jira_comment(
+    _, adf = controller.build_jira_comment(
         completion_content=completion,
         references=pinecone_results,
     )
 
-    save_to_file(json.dumps(adf), "adf.json", subdir=issue.key)
+    save_to_file(json.dumps(adf), "adf.json", subdir=lrn_issue.key)
 
     # * Post the ADF reply
 
-    gatherer.post_adf(lrn_issue, adf)  # , reply_comment=target_comment)
+    controller.post_adf(lrn_issue, adf)  # , reply_comment=target_comment)
 
     log.info("Posted ADF reply for issue %s", lrn_issue.key)
 
@@ -165,7 +163,6 @@ def process_issue(
 def main():
     log.info("Application started (v%s)", __version__)
 
-    gatherer = IssueGatherer()
     controller = Controller()
 
     # Log settings
@@ -180,7 +177,7 @@ def main():
     save_to_file(settings.jql, "jira_query.jql")
 
     log.info("Searching with JQL: '%s'...", settings.jql)
-    lrn_issues = gatherer.query(settings.jql)
+    lrn_issues = controller.query(settings.jql)
     log.info(
         "Processing %d issues... (%s)",
         len(lrn_issues),
@@ -193,7 +190,7 @@ def main():
 
     for lrn_issue in lrn_issues:
         try:
-            process_issue(gatherer, controller, system_prompt, lrn_issue)
+            process_issue(controller, system_prompt, lrn_issue)
         except Exception as e:
             log.error("Error processing issue %s: %s", lrn_issue.key, e)
 
