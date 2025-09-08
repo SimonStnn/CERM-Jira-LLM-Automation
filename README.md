@@ -24,8 +24,7 @@ High-level flow:
 Key modules:
 
 - `src/main.py` — Orchestrates the full pipeline end-to-end.
-- `src/services/gatherer.py` — Jira queries, AI comment filtering, Pinecone search, ADF posting.
-- `src/services/controller.py` — Creates Azure OpenAI clients, wraps chat completions.
+- `src/services/controller.py` — Jira queries, AI comment filtering, Pinecone search, ADF posting, and OpenAI calls.
 - `src/services/builder.py` — Compiles the final prompt from comments + docs.
 - `src/utils/text.py` — Builds the ADF payload and plain-text fallback.
 - `src/config/config.py` — Loads settings from environment; validates and structures configuration.
@@ -117,7 +116,6 @@ Embeddings:
 
 - `AZURE_EMBEDDING_ENDPOINT`: Endpoint with `api-version`, e.g. `https://...azure.com/?api-version=2024-06-01`
 - `AZURE_EMBEDDING_DEPLOYMENT_NAME`: Embedding deployment name (e.g., `text-embedding-3-small`)
-- `AZURE_EMBEDDING_DIMENSION`: Optional; defaults to 1536
 
 Pinecone:
 
@@ -127,14 +125,13 @@ Pinecone:
 
 Logging (optional):
 
-- `LOG_NAME`: Logger name (default `Cerm7-AI-project`)
+- `LOG_NAME`: Logger name (default `AI-project`)
 - `LOG_LEVEL`: e.g., `INFO`, `DEBUG`
-- `LOG_DATEFMT`: e.g., `%Y-%m-%d %H:%M:%S`
 
 Project JQL controls:
 
-- `AIR_SEARCH_PROJECTS`: Comma-separated Jira project keys, e.g., `PROJ1, PROJ2`
-- `AIR_SEARCH_KEYWORDS`: Comma-separated keywords; the app looks for comments that start with a Jira heading containing any keyword (e.g., a comment whose first line is `h2. Online Help`)
+- `AIR_SEARCH_JQL`: Full JQL string to search for issues (preferred)
+- `AIR_SEARCH_PROJECT`: Project key used in filtering linked issues (defaults to `CERM7`)
 
 Notes about Azure api-version:
 
@@ -156,7 +153,7 @@ Notes about Azure api-version:
 
 When you run `python src/main.py`:
 
-1) JQL is built from `AIR_SEARCH_PROJECTS` and `AIR_SEARCH_KEYWORDS` and issues are fetched.
+1) Issues are fetched using `AIR_SEARCH_JQL`.
 2) Comments are filtered by the triage model (scores >= 0.5 are kept).
 3) Pinecone is queried with the issue summary to get top-k references (default 10).
 4) A final prompt is compiled and sent to the main chat deployment.
@@ -174,7 +171,7 @@ Expectations for Pinecone metadata:
 - Jira 401/403: verify `JIRA_SERVER`, `JIRA_EMAIL`, `JIRA_API_TOKEN`, and permissions to comment.
 - Azure OpenAI errors: ensure each endpoint includes `?api-version=...` and deployment names match exactly.
 - Pinecone index errors: confirm `PINECONE_INDEX` exists, API key is correct, and the index contains data in the chosen `PINECONE_NAMESPACE`.
-- No matching issues/comments: adjust `AIR_SEARCH_PROJECTS` and `AIR_SEARCH_KEYWORDS` to match your data.
+- No matching issues/comments: adjust `AIR_SEARCH_JQL` (and optionally `AIR_SEARCH_PROJECT`) to match your data.
 - Env not loading: make sure `src/.env` exists; the init script creates it for you.
 
 ---
