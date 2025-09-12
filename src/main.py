@@ -177,6 +177,7 @@ def main():
     save_to_file(settings.jira_query, "jira_query.jql")
 
     log.info("Searching with JQL: '%s'...", settings.jira_query)
+    log.info("Fetching issues from Jira since '%s'", settings.pipeline_last_run_utc)
     lrn_issues = controller.query(settings.jira_query)
     log.info(
         "Processing %d issues... (%s)",
@@ -190,7 +191,6 @@ def main():
 
     for lrn_issue in lrn_issues:
         try:
-            print(1 / 0)
             process_issue(controller, system_prompt, lrn_issue)
         except Exception as e:
             log.error("Error processing issue %s: %s", lrn_issue.key, e)

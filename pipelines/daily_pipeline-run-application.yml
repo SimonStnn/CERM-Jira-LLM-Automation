@@ -1,5 +1,10 @@
 trigger: none
 
+parameters:
+  - name: variableGroupName
+    type: string
+    default: jira-ai-project-variables-group
+
 schedules:
   - cron: "0 4 * * SAT" # At 04:00 AM, only on Saturday
     displayName: "Weekly Saturday 4:00 AM Execution"
@@ -17,37 +22,6 @@ steps:
       python3.11 -m pip install --upgrade pip
       pip install -r requirements.txt
     displayName: "Install pip dependencies"
-
-  - script: |
-      set -e
-      ORG="$(System.TeamFoundationCollectionUri)"
-      PROJECT="$(System.TeamProject)"
-      PIPELINE_ID="$(System.DefinitionId)"
-
-      echo "ORG: $ORG"
-      echo "PROJECT: $PROJECT"
-      echo "PIPELINE_ID: $PIPELINE_ID"
-      echo ""
-
-      # Get the last successful pipeline run
-      LAST_RUN_JSON=$(curl -s -u :$(System.AccessToken) \
-        "${ORG}${PROJECT}/_apis/pipelines/${PIPELINE_ID}/runs?status=completed&result=succeeded&$top=1&api-version=7.1-preview.1")
-
-      echo "Last run JSON: $LAST_RUN_JSON"
-
-      LAST_SUCCESSFUL_RUN=$(echo "$LAST_RUN_JSON" | jq -r '.value[1].createdDate')
-
-      if [ -z "$LAST_SUCCESSFUL_RUN" ] || [ "$LAST_SUCCESSFUL_RUN" = "null" ]; then
-        echo "No previous successful run found. Using current time as fallback."
-        # LAST_SUCCESSFUL_RUN="$(date -u '+%Y-%m-%d %H:%M')"
-        LAST_SUCCESSFUL_RUN=""
-      fi
-
-      echo "Setting AIR_PIPELINE_LAST_RUN_UTC to $LAST_SUCCESSFUL_RUN"
-      echo "##vso[task.setvariable variable=AIR_PIPELINE_LAST_RUN_UTC]$LAST_SUCCESSFUL_RUN"
-    displayName: "Set AIR_PIPELINE_LAST_RUN_UTC from last successful run"
-    env:
-      System.AccessToken: $(System.AccessToken)
 
   - script: |
       echo "Launching application..."
@@ -77,6 +51,45 @@ steps:
   - script: |
       set -e
       NOW_UTC="$(date -u '+%Y-%m-%d %H:%M')"
-      echo "Setting AIR_PIPELINE_LAST_RUN_UTC to $NOW_UTC"
+      echo "Computed end timestamp: $NOW_UTC"
+      AZURE_DEVOPS_EXT_PAT="$(AIR_PIPELINE_PAT)"
+
+      ORG="$(System.TeamFoundationCollectionUri)"
+      PROJECT="$(System.TeamProject)"
+      VG_NAME="${{ parameters.variableGroupName }}"
+      echo "Updating variable group '$VG_NAME' in $ORG$PROJECT via Azure CLI"
+
+      # Ensure azure-devops extension present
+      if ! az extension show --name azure-devops >/dev/null 2>&1; then
+        echo "Installing azure-devops CLI extension"
+        az extension add --name azure-devops
+      fi
+
+      # Login using PAT (must be provided as secret variable AZURE_DEVOPS_EXT_PAT)
+      if [ -z "$AZURE_DEVOPS_EXT_PAT" ]; then
+        echo "ERROR: AZURE_DEVOPS_EXT_PAT not set." >&2
+        exit 1
+      fi
+      echo "$AZURE_DEVOPS_EXT_PAT" | az devops login
+
+      az devops configure --defaults organization="$ORG" project="$PROJECT"
+
+      VG_ID=$(az pipelines variable-group list --query "[?name=='$VG_NAME'].id" -o tsv)
+      if [ -z "$VG_ID" ]; then
+        echo "ERROR: Variable group '$VG_NAME' not found." >&2
+        exit 1
+      fi
+
+      echo "Found variable group id: $VG_ID"
+
+      echo "Updating variable AIR_PIPELINE_LAST_RUN_UTC in group $VG_ID"
+      az pipelines variable-group variable update \
+        --group-id "$VG_ID" \
+        --name AIR_PIPELINE_LAST_RUN_UTC \
+        --value "$NOW_UTC" 1>/dev/null
+
+      echo "Successfully set AIR_PIPELINE_LAST_RUN_UTC=$NOW_UTC in variable group $VG_ID"
       echo "##vso[task.setvariable variable=AIR_PIPELINE_LAST_RUN_UTC]$NOW_UTC"
-    displayName: "Set last run timestamp variable"
+    displayName: "Persist end timestamp to variable group (Azure CLI)"
+    env:
+      AIR_PIPELINE_PAT: $(AIR_PIPELINE_PAT)
