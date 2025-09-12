@@ -24,6 +24,7 @@ steps:
     displayName: "Install pip dependencies"
 
   - script: |
+      set -euo pipefail
       echo "Launching application..."
       python3.11 src/main.py
     displayName: "Run application"
@@ -40,6 +41,7 @@ steps:
       fi
       echo "##vso[task.setvariable variable=LOG_DIR]$LOG_DIR"
     displayName: "Detect log directory and set variable"
+    condition: always()
 
   - task: PublishPipelineArtifact@1
     inputs:
@@ -47,6 +49,7 @@ steps:
       artifact: logs-$(Build.BuildId)
       publishLocation: pipeline
     displayName: "Publish logs as pipeline artifact"
+    condition: always()
 
   - script: |
       set -e
@@ -91,7 +94,7 @@ steps:
       echo "Successfully set AIR_PIPELINE_LAST_RUN_UTC=$NOW_UTC in variable group $VG_ID"
       echo "##vso[task.setvariable variable=AIR_PIPELINE_LAST_RUN_UTC]$NOW_UTC"
     displayName: "Persist end timestamp to variable group (Azure CLI)"
-    # Only run this persistence step if the main application step fully succeeded
-    condition: eq(steps.run_app.result, 'Succeeded')
+    # Only run this persistence step if all previous steps (including run_app) succeeded
+    condition: succeeded()
     env:
       AIR_PIPELINE_PAT: $(AIR_PIPELINE_PAT)
