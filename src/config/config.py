@@ -134,13 +134,13 @@ class Settings(BaseSettings):
         """
         last_run = self.pipeline_last_run_utc
         if last_run:
-            period = f'updated >= "{last_run}"'
+            period = f'"{last_run}"'
         else:
             log.warning(
                 "No last run timestamp set. Falling back to default 14-day period in JQL (AIR_PIPELINE_LAST_RUN_UTC=%s).",
                 self.pipeline_last_run_utc,
             )
-            period = "updated >= -14d"
+            period = "-7d"
         if "{period}" in self.jql:
             return self.jql.replace("{period}", period)
 
