@@ -174,10 +174,10 @@ def main():
 
     # * Query jira for issues
 
-    save_to_file(settings.jql, "jira_query.jql")
+    save_to_file(settings.jira_query, "jira_query.jql")
 
-    log.info("Searching with JQL: '%s'...", settings.jql)
-    lrn_issues = controller.query(settings.jql)
+    log.info("Searching with JQL: '%s'...", settings.jira_query)
+    lrn_issues = controller.query(settings.jira_query)
     log.info(
         "Processing %d issues... (%s)",
         len(lrn_issues),
@@ -190,6 +190,7 @@ def main():
 
     for lrn_issue in lrn_issues:
         try:
+            print(1 / 0)
             process_issue(controller, system_prompt, lrn_issue)
         except Exception as e:
             log.error("Error processing issue %s: %s", lrn_issue.key, e)

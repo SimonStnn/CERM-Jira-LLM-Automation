@@ -1,46 +1,82 @@
 trigger: none
 
-schedules: 
-- cron: "0 4 * * SAT" # At 04:00 AM, only on Saturday (https://crontab.cronhub.io/)
-  displayName: "Weekly Saturday 4:00 AM Execution"
-  branches:
-    include:
-      - main
+schedules:
+  - cron: "0 4 * * SAT" # At 04:00 AM, only on Saturday
+    displayName: "Weekly Saturday 4:00 AM Execution"
+    branches:
+      include:
+        - main
 
 variables:
-- group: jira-ai-project-variables-group
+  - group: jira-ai-project-variables-group
 
 pool: Default
 
-
 steps:
-- script: |
-    python3.11 -m pip install --upgrade pip
-    pip install -r requirements.txt
-  displayName: 'Install pip dependencies'
+  - script: |
+      python3.11 -m pip install --upgrade pip
+      pip install -r requirements.txt
+    displayName: "Install pip dependencies"
 
-- script: |
-    python3.11 src/main.py
-  displayName: 'Run application'
-  continueOnError: true
+  - script: |
+      set -e
+      ORG="$(System.TeamFoundationCollectionUri)"
+      PROJECT="$(System.TeamProject)"
+      PIPELINE_ID="$(System.DefinitionId)"
 
-- script: |
-    set -e
-    LOG_DIR="log/$(date +%Y)/$(date +%m)/$(date +%d)"
-    if [ -d "$LOG_DIR" ]; then
-      echo "Found logs in $LOG_DIR"
-    else
-      echo "No logs found in $LOG_DIR; creating placeholder."
-      mkdir -p "$LOG_DIR"
-    fi
-    echo "##vso[task.setvariable variable=LOG_DIR]$LOG_DIR"
-  displayName: 'Detect log directory and set variable'
+      echo "ORG: $ORG"
+      echo "PROJECT: $PROJECT"
+      echo "PIPELINE_ID: $PIPELINE_ID"
+      echo ""
 
-- task: PublishPipelineArtifact@1
-  inputs:
-    targetPath: $(LOG_DIR)
-    artifact: logs-$(Build.BuildId)
-    publishLocation: pipeline
-  displayName: 'Publish logs as pipeline artifact'
+      # Get the last successful pipeline run
+      LAST_RUN_JSON=$(curl -s -u :$(System.AccessToken) \
+        "${ORG}${PROJECT}/_apis/pipelines/${PIPELINE_ID}/runs?status=completed&result=succeeded&$top=1&api-version=7.1-preview.1")
 
+      echo "Last run JSON: $LAST_RUN_JSON"
 
+      LAST_SUCCESSFUL_RUN=$(echo "$LAST_RUN_JSON" | jq -r '.value[1].createdDate')
+
+      if [ -z "$LAST_SUCCESSFUL_RUN" ] || [ "$LAST_SUCCESSFUL_RUN" = "null" ]; then
+        echo "No previous successful run found. Using current time as fallback."
+        # LAST_SUCCESSFUL_RUN="$(date -u '+%Y-%m-%d %H:%M')"
+        LAST_SUCCESSFUL_RUN=""
+      fi
+
+      echo "Setting AIR_PIPELINE_LAST_RUN_UTC to $LAST_SUCCESSFUL_RUN"
+      echo "##vso[task.setvariable variable=AIR_PIPELINE_LAST_RUN_UTC]$LAST_SUCCESSFUL_RUN"
+    displayName: "Set AIR_PIPELINE_LAST_RUN_UTC from last successful run"
+    env:
+      System.AccessToken: $(System.AccessToken)
+
+  - script: |
+      echo "Launching application..."
+      python3.11 src/main.py
+    displayName: "Run application"
+    continueOnError: true
+
+  - script: |
+      set -e
+      LOG_DIR="log/$(date +%Y)/$(date +%m)/$(date +%d)"
+      if [ -d "$LOG_DIR" ]; then
+        echo "Found logs in $LOG_DIR"
+      else
+        echo "No logs found in $LOG_DIR; creating placeholder."
+        mkdir -p "$LOG_DIR"
+      fi
+      echo "##vso[task.setvariable variable=LOG_DIR]$LOG_DIR"
+    displayName: "Detect log directory and set variable"
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: $(LOG_DIR)
+      artifact: logs-$(Build.BuildId)
+      publishLocation: pipeline
+    displayName: "Publish logs as pipeline artifact"
+
+  - script: |
+      set -e
+      NOW_UTC="$(date -u '+%Y-%m-%d %H:%M')"
+      echo "Setting AIR_PIPELINE_LAST_RUN_UTC to $NOW_UTC"
+      echo "##vso[task.setvariable variable=AIR_PIPELINE_LAST_RUN_UTC]$NOW_UTC"
+    displayName: "Set last run timestamp variable"
