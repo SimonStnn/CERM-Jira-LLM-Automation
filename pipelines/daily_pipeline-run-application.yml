@@ -27,7 +27,7 @@ steps:
       echo "Launching application..."
       python3.11 src/main.py
     displayName: "Run application"
-    continueOnError: true
+    name: run_app
 
   - script: |
       set -e
@@ -91,5 +91,7 @@ steps:
       echo "Successfully set AIR_PIPELINE_LAST_RUN_UTC=$NOW_UTC in variable group $VG_ID"
       echo "##vso[task.setvariable variable=AIR_PIPELINE_LAST_RUN_UTC]$NOW_UTC"
     displayName: "Persist end timestamp to variable group (Azure CLI)"
+    # Only run this persistence step if the main application step fully succeeded
+    condition: eq(steps.run_app.result, 'Succeeded')
     env:
       AIR_PIPELINE_PAT: $(AIR_PIPELINE_PAT)

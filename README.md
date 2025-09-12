@@ -36,6 +36,7 @@ High-level flow:
   - [Reference documents in Pinecone](#reference-documents-in-pinecone)
 - [Run details](#run-details)
   - [Automated pipeline execution](#automated-pipeline-execution)
+    - [Dynamic JQL period \& last-run timestamp](#dynamic-jql-period--last-run-timestamp)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
 - [License](#license)
@@ -152,6 +153,10 @@ Controls the root logger referenced by `settings.log`.
   > The pipeline queries Jira issues via JQL. Prefer supplying a full JQL expression. If `AIR_SEARCH_JQL` is empty the app will fail validation.
 - `AIR_SEARCH_PROJECT`
   > Project key used when resolving linked issues / context (default: `CERM7`)
+- `AIR_PIPELINE_LAST_RUN_UTC`
+  > The time of the last successful run. This will be injected in the jql query. [More info](#dynamic-jql-period--last-run-timestamp)
+- `AIR_PIPELINE_PAT`
+  > To update a variable in the variable group you need a Personal Access Token (PAT). To generate click the settings icon in your navbar in [Azure DevOps](https://dev.azure.com/). Then click "Personal access tokens". Here you can create one.
 
 ---
 
@@ -185,18 +190,27 @@ An Azure DevOps pipeline (`pipelines/daily_pipeline-run-application.yml`) also r
 - Steps: install dependencies, run the app (`python3.11 src/main.py`), detect the latest date‑based log directory, then publish it as a pipeline artifact.
 - Resilience: `continueOnError: true` on the run step ensures log collection + artifact publish still occur even if the main script exits non‑zero.
 
-Artifacts contain the structured logs under `log/<YYYY>/<MM>/<DD>/` including:
+Artifacts contain structured logs under `log/<YYYY>/<MM>/<DD>/` including:
 
 - `cerm7-ai-project.log` (runtime log)
 - `jira_issues.json` (queried issues snapshot)
-- Per‑issue subfolders with prompt + model output for traceability
-- `cerm7-ai-project.log` (runtime log)
-- `jira_issues.json` (queried issues snapshot)
-- Per‑issue subfolders with prompt + model output for traceability
+- Per‑issue subfolders with prompt + model output (`prompt_*.md`, `completion.md`, `pinecone_results.json`, etc.) for traceability
 
 Manual run: Use “Run pipeline” in Azure DevOps to execute ad‑hoc (e.g., after changing variable values or model deployments). To change cadence, edit the cron string (UTC) and commit. If you want push‑based execution, replace `trigger: none` with a branch include list.
 
 Security note: keep secrets exclusively in the variable group; the repo only references variable names.
+
+#### Dynamic JQL period & last-run timestamp
+
+The application supports a rolling query window so each pipeline run only processes issues created since the previous successful run.
+
+How it works:
+
+1. The base JQL in `AIR_SEARCH_JQL` may include the placeholder `{period}`.
+2. At startup `Settings.jira_query` replaces `{period}` with a concrete JQL clause.
+3. If the environment variable `AIR_PIPELINE_LAST_RUN_UTC` is present and parseable, it becomes: `"YYYY-MM-DD HH:MM"`
+4. If no previous timestamp is available, the code currently falls back to a relative period `-7d` (see `Settings.jira_query` in `config.py`).
+5. After a pipeline run finishes, the Azure DevOps pipeline step "Persist last run timestamp" captures the current UTC time and PATCHes the variable group to update `AIR_PIPELINE_LAST_RUN_UTC` for the next run.
 
 ## Troubleshooting
 
